@@ -1,20 +1,38 @@
 #include "jvec.h"
+
 #include <string.h>
+#include <stdlib.h>
 
 enum
 {
 	INSERTION_SORT_THRESH = 24;
 };
 
-static void swap(uint8* a, uint8* b, uint32 blocksz)
+void vec_add(vector* v, u8* data)
 {
-	uint8 tmp[256];
-	memcpy(tmp, a, blocksz);
-	memcpy(a, b, blocksz);
-	memcpy(b, tmp, blocksz);
+	if (v->size * v->blocksz >= v->data.size)1
+		vec_resize(v, v->size * 2);
+
+	// size of the type is not known ahead of time hence this
+	memcpy(vec_at(v, v->size), data, v->blocksz);
+	v->size++;
 }
 
-static void insertion(uint8* data, uint32 size, uint32 blocksz, int (*cmp)(const uint8*, const uint8*))
+u8* vec_rm(vector* v)
+{
+	v->size--;
+	return vec_at(v, v->size);
+}
+
+void vec_resize(vector* v, u32 size)
+{
+	if (v->data.handle == U32_MAX)
+		mem_realloc(&v->data, size * v->blocksz);
+	else
+		arena_realloc(&v->data, size);
+}
+
+static void insertion(u8* data, u32 size, u32 blocksz, pfm_cmp cmp, pfn_swap swap)
 {
 	for (int i = 0; i < size; i++)
 	{
@@ -32,9 +50,9 @@ static void heapsort()
 
 }
 
-static uint8* partition(uint8* beg, uint8* end, uint32 blocksz, int (*cmp)(uint8*, uint8*))
+static u8* partition(u8* beg, u8* end, u32 blocksz, pfn_cmp cmp, pfn_swap swap)
 {
-	uint8* mid = (beg + end) / 2;
+	u8* mid = (beg + end) / 2;
 
 	if (cmp(beg, mid) > 0)
 		swap(beg, mid);
@@ -59,16 +77,23 @@ static uint8* partition(uint8* beg, uint8* end, uint32 blocksz, int (*cmp)(uint8
 	return mid;
 }
 
-void vec_sort(uint8* beg, uint8* end, uint32 blocksz, int (*cmp)(uint8*, uint8*))
+void sort_internal(u8* beg, u8* end, u32 blocksz, pfn_cmp cmp, pfn_swap swap)
 {
-	uint64 size = (end - beg) / blocksz;
+	u64 size = (end - beg) / blocksz;
 	if (size < INSERTION_SORT_THRESH)
 	{
 		insertion(data, size, blocksz, cmp);
 		return;
 	}
 
-	uint8* mid = partition(beg, end, blocksz, cmp);
-	vec_sort(beg, mid, blocksz, cmp);
-	vec_sort(mid, end, blocksz, cmp);
+	u8* mid = partition(beg, end, blocksz, cmp);
+	sort_internal(beg, mid, blocksz, cmp);
+	sort_internal(mid, end, blocksz, cmp);
+}
+
+void vec_sort(vector* v, pfn_cmp cmp, pfn_swap swap)
+{
+	u8* beg = vec_at(v, 0);
+	u8* end = vec_at(v, v->size - 1);
+	sort_internal(beg, end, v->blocksz, cmp, swap);
 }

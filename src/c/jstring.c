@@ -38,7 +38,7 @@ void str_cat(mem_arena* mem, string* str, ...)
 	}
 }
 
-uint32 str_len(const char* str)
+u32 str_len(cstr str)
 {
 	__m256i nul = _mm256_set1_epi8('\0');
 	__m256i one = _mm256_set1_epi8(0xFF);

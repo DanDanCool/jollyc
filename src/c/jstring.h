@@ -12,5 +12,5 @@ typedef struct
 
 // last argument should be null, 32 strings max
 void str_cat(mem_arena* mem, string* str, ...);
-uint32 str_len(const char* str);
+u32 str_len(cstr str);
 int str_cmp(string* s1, string* s2);

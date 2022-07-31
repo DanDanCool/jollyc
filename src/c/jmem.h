@@ -16,53 +16,71 @@ enum
 	BLOCK_8192 = 8192;
 };
 
+struct mem_arena_t;
+typedef mem_arena_t mem_arena;
+
 typedef struct
 {
-	uint8* data;
-	uint32 size;
+	mem_arena* arena;
+	u32 handle;
+	u32 size;
 } mem_block;
 
-#define MEM_DATA(mem) mem.data
-#define MEM_SIZE(mem) mem.size
+inline u8* MEM_DATA(mem_block* block)
+{
+	// if handle is equal to U32_MAX then the data the block points to is stored in arena
+	mem_arena* arena = block->arena;
+	u8* data = arena->data + block->handle * arena->blocksz;
+	return block->handle == U32_MAX ? (u8*)arena : data;
+}
+
+inline u32 MEM_SIZE(mem_block* block)
+{
+	return block->size;
+}
 
 typedef struct
 {
-	uint8* data;
+	mem_block* data;
+	u32 free;
+	u32 size;
+	u32 cap;
+	u32 new;
+} mem_gc;
 
-	struct
-	{
-		mem_block* data;
-		uint32 size;
-		uint32 cap;
-	} free;
+struct mem_arena_t
+{
+	u8* data;
+	u32 blocksz;
+	u32 size;
+	mem_gc gc;
+};
 
-	uint32 size;
-	uint32 blocksz;
-} mem_arena;
+void arena_init(mem_arena* arena, u32 size, u32 blocksz);
+void arena_destroy(mem_arena* arena);
+void arena_resize(mem_arena* arena, u32 size);
+void arena_gc(mem_arena* arena);
 
-void arena_init(mem_arena* mem, uint32 size, uint32 blocksz);
-void arena_destroy(mem_arena* mem);
+mem_block arena_alloc(mem_arena* arena, u32 count);
+void arena_realloc(mem_block* block, u32 count);
+void arena_free(mem_block* block);
 
-mem_block arena_alloc(mem_arena* mem, uint32 count);
-void arena_realloc(mem_arena* mem, mem_block* block, uint32 count);
-void arena_free(mem_arena* mem, mem_block* block);
-void arena_gc(mem_arena* mem);
+mem_block mem_alloc(u32 size);
+void mem_realloc(mem_block* block, u32 size);
+void mem_free(mem_block* block);
 
-mem_block mem_alloc(uint32 size);
-void mem_realloc(mem_block* block, uint32 size);
+void mem_cpy16(u8* dst, u8* src, u32 count);
+void mem_cpy32(u8* dst, u8* src, u32 count);
 
-void mem_cpy16(uint8* dst, uint8* src, uint32 count);
-void mem_cpy32(uint8* dst, uint8* src, uint32 count);
+void mem_set16(u8* dst, u32 val, u32 count);
+void mem_set32(u8* dst, u32 val, u32 count);
 
-void mem_set16(uint8* dst, uint32 val, uint32 count);
-void mem_set32(uint8* dst, uint32 val, uint32 count);
-
-int mem_cmp16(uint8* a, uint8* b, uint32 count);
-int mem_cmp32(uint8* a, uint8* b, uint32 count);
+int mem_cmp16(u8* a, u8* b, u32 count);
+int mem_cmp32(u8* a, u8* b, u32 count);
 
 // unaligned versions
-void mem_cpy16u(uint8* dst, uint8* src, uint32 count);
-void mem_cpy32u(uint8* dst, uint8* src, uint32 count);
+void mem_cpy16u(u8* dst, u8* src, u32 count);
+void mem_cpy32u(u8* dst, u8* src, u32 count);
 
-int mem_cmp16u(uint8* a, uint8* b, uint32 count);
-int mem_cmp32u(uint8* a, uint8* b, uint32 count);
+int mem_cmp16u(u8* a, u8* b, u32 count);
+int mem_cmp32u(u8* a, u8* b, u32 count);
