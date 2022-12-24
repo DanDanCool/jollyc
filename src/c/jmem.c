@@ -8,14 +8,19 @@ static mem_block* gc_partition(mem_block* beg, mem_block* end);
 static void gc_insertion(mem_block* beg, mem_block* end);
 
 // swap if memory adress in a is greater than b
-static void swapgt(mem_block* a, mem_block* b)
-static void swap(mem_block* a, mem_block* b)
+static void swapgt(mem_block* a, mem_block* b);
+static void swap(mem_block* a, mem_block* b);
+
+inline mem_block* arena_freeblock(mem_arena* arena)
+{
+	return arena->gc.data + arena->gc.free;
+}
 
 void arena_init(mem_arena* arena, u32 size, u32 blocksz)
 {
-	arena->size = size;
-	arena->blocksz = blocksz;
-	arena->data = (u8*)aligned_alloc(64, size * blocksz);
+	arena->base.reserve = size;
+	arena->base.size = blocksz;
+	arena->base.data = (u8*)aligned_alloc(64, size * blocksz);
 
 	arena->gc.data = (mem_block*)aligned_alloc(64, BLOCK_128 * sizeof(mem_block));
 	arena->gc.size = 1;
@@ -28,51 +33,46 @@ void arena_init(mem_arena* arena, u32 size, u32 blocksz)
 void arena_destroy(mem_arena* arena)
 {
 	free(arena->data);
-	arena->data = NULL;
-	arena->size = 0;
-	arena->blocksz = 0;
+	arena->base = {};
 
 	free(arena->gc.data);
-	arena->gc.data = NULL;
+	arena->gc = {};
 	arena->gc.free = U32_MAX;
-	arena->gc.size = 0;
-	arena->gc.cap = 0;
-	arena->gc.new = 0;
 }
 
 mem_block arena_alloc(mem_arena* arena, u32 count)
 {
-	mem_block* free = arena->gc.data + arena->gc.free;
+	mem_block* free = arena_freeblock(arena);
 
-	if (free->size < count * arena->blocksz)
+	if (free->size < count * arena->base.blocksz)
 	{
 		arena_resize(arena, arena->size * 2);
-		free = arena->gc.data + arena->gc.free;
+		free = arena_freeblock(arena);
 	}
 
-	mem_block block = { arena, free->handle, count * arena->blocksz };
+	mem_block block = { &arena->base, free->handle, count * arena->base.blocksz };
 	free->handle += count;
-	free->size -= count * arena->blocksz;
+	free->size -= count * arena->base.blocksz;
 }
 
 mem_block arena_realloc(mem_block* block, u32 count)
 {
-	mem_arena* arena = block->arena;
+	mem_arena* arena = (mem_arena*)block->owner;
 	u8* base = MEM_DATA(block);
-	mem_block* free = arena->gc.data + arena->gc.free;
+	mem_block* free = arena_freeblock(arena);
 
-	u32 extra = count * arena->blocksz - block->size;
+	u32 extra = count * arena->base.blocksz - block->size;
 	if (base + block->size == MEM_DATA(free) && free->size > extra)
 	{
 		block->size += extra;
-		free->handle += extra / arena->blocksz;
+		free->handle += extra / arena->base.blocksz;
 		free->size -= extra;
 		return;
 	}
 
 	// not enough space adjacent, reallocate
 	mem_block tmp = arena_alloc(arena, count);
-	switch (arena->blocksz)
+	switch (arena->base.blocksz)
 	{
 		case BLOCK_16:
 		{
@@ -93,7 +93,8 @@ mem_block arena_realloc(mem_block* block, u32 count)
 
 void arena_free(mem_block* block)
 {
-	mem_gc* gc = &block->arena.gc;
+	mem_arena* arena = (mem_arena*)block->owner;
+	mem_gc* gc = &arena->gc;
 	if (gc->cap <= gc->size)
 		gc_resize(gc, gc->cap * 2);
 
@@ -106,26 +107,26 @@ void arena_free(mem_block* block)
 
 void arena_resize(mem_arena* arena, u32 size)
 {
-	u8* tmp = (u8*)aligned_alloc(64, size * arena->blocksz);
-	u32 copy = arena->size > size ? size : arena->size;
+	u8* tmp = (u8*)aligned_alloc(64, size * arena->base.blocksz);
+	u32 copy = arena->base.size > size ? size : arena->base.size;
 
-	switch (arena->blocksz)
+	switch (arena->base.blocksz)
 	{
 		case BLOCK_16:
 		{
-			mem_cpy16(tmp, arena->data, copy);
+			mem_cpy16(tmp, arena->base.data, copy);
 			break;
 		}
 		default:
 		{
-			mem_cpy32(tmp, arena->data, copy * arena->blocksz / BLOCK_32);
+			mem_cpy32(tmp, arena->base.data, copy * arena->base.blocksz / BLOCK_32);
 			break;
 		}
 	}
 
-	free(arena->data);
-	arena->data = tmp;
-	arena->size = size;
+	free(arena->base.data);
+	arena->base.data = tmp;
+	arena->base.size = size;
 }
 
 void arena_gc(mem_arena* arena)
@@ -187,31 +188,139 @@ void arena_gc(mem_arena* arena)
 	gc->new = 0;
 }
 
-mem_block mem_alloc(u32 size)
+void pool_init(mem_pool* pool, u32 size, u32 blocksz)
 {
-	mem_block mem = {};
-	mem.arena = (arena*)aligned_alloc(64, size);
-	mem.handle = U32_MAX;
+	pool->base.data = (u8*)aligned_alloc(64, size * blocksz);
+	pool->base.blocksz = blocksz;
+	pool->base.size = size;
+	pool->free = 0;
+
+	u32* block = (u32*)pool->base.data;
+	for (u32 i = 1; i < size; i++)
+	{
+		*block = i;
+		block += blocksz;
+	}
+
+	*block = U32_MAX;
+}
+
+void pool_destroy(mem_pool* pool)
+{
+	free(pool->base.data);
+	pool->base = {};
+	pool->free = U32_MAX;
+}
+
+void pool_resize(mem_pool* pool, u32 size)
+{
+	u8* tmp = (u8*)aligned_alloc(64, size * pool->base.blocksz);
+	u32 copy = pool->base.size > size ? size : pool->base.size;
+
+	switch(pool->base.blocksz)
+	{
+		case BLOCK_16:
+		{
+			mem_cpy16(tmp, arena->base.data, copy);
+			break;
+		}
+		default:
+		{
+			mem_cpy32(tmp, pool->base.data, copy * pool->base.blocksz / BLOCK32);
+			break;
+		}
+	}
+
+	if (size > pool->base.size)
+	{
+		u32* block = tmp + pool->base.blocksz * size;
+		u32 node = pool->free;
+
+		while (node != U32_MAX)
+		{
+			block = tmp + pool->base.blocksz * last;
+			node = *block;
+		}
+
+		for (u32 i = pool->base.size; i < size; i++)
+		{
+			*block = i;
+			block += pool->base.blocksz;
+		}
+
+		*block = U32_MAX;
+		pool->free = pool->free == U32_MAX ? pool->base.size : pool->free;
+	}
+	else
+	{
+		u32* block;
+		u32 node = pool->free;
+
+		while (node != U32_MAX)
+		{
+			block = pool->base.data + pool->base.blocksz * node;
+			u32 next = *block;
+
+			while (next > size && next != U32_MAX)
+			{
+				block = pool->base.data + pool->base.blocksz * next;
+				next = *block;
+			}
+
+			block = tmp + pool->base.blocksz * node;
+			*block = next;
+			node = next;
+		}
+	}
+
+	free(pool->base.data);
+	pool->base.data = tmp;
+	pool->base.size = size;
+}
+
+mem_block pool_alloc(mem_pool* pool)
+{
+	if (pool->free == U32_MAX)
+		pool_resize(pool->base.size * 2);
+
+	mem_block mem = { &pool->base, pool->free, pool->base.blocksz };
+	u32* node = (u32*)(pool->base.data + pool->free * pool->base.blocksz);
+	pool->free = *node;
+	return mem;
+}
+
+void pool_free(mem_block* mem)
+{
+	mem_pool* pool = (mem_pool*)mem->owner;
+	u32* node = (u32*)(pool->base.data + mem->handle * pool->base.blocksz);
+	u32 tmp = mem->handle;
+	*node = pool->free;
+	pool->free = tmp;
+}
+
+mem_ptr mem_alloc(u32 size)
+{
+	mem_ptr mem = {};
+	mem.data = (u8*)aligned_alloc(64, size);
 	mem.size = size;
 	return mem;
 }
 
-void mem_realloc(mem_block* block, u32 size)
+void mem_realloc(mem_ptr* block, u32 size)
 {
-	mem_block tmp = mem_alloc(size);
+	mem_ptr tmp = mem_alloc(size);
 
 	// assume that the original size is a multiple of 32
-	mem_cpy32((u8*)tmp.arena, (u8*)block->arena, block->size / 32);
+	mem_cpy32(tmp.data, block->data, block->size / 32);
 
 	free(block->data);
 	*block = tmp;
 }
 
-void mem_free(mem_block* block)
+void mem_free(mem_ptr* block)
 {
 	// assert that this block does not belong to an arena
-	free(block->arena);
-	block->arena = NULL;
+	free(block->data);
 	block->size = 0;
 }
 
@@ -345,7 +454,7 @@ int mem_cmp32u(u8* a, u8* b, u32 count)
 
 enum
 {
-	INSERTION_THRESHOLD = 24;
+	INSERTION_THRESHOLD = 24,
 }
 
 static void swap(mem_block* a, mem_block* b)
