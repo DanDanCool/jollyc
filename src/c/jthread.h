@@ -1,11 +1,9 @@
 #pragma once
 
-#include <stdatomic.h>
-
 #include "jtype.h"
+#include "jvec.h"
+#include "jatomic.h"
 #include "jmem.h"
-
-#define atomic(x) _Atomic x
 
 typedef struct thread thread;
 typedef struct semaphore semaphore;
@@ -34,21 +32,22 @@ struct thread
 	u64 handle;
 	semaphore lock;
 	pfn_task task;
-	mem_block data;
+	void* data;
 	atomic(u32) flags;
 };
 
+VECTOR_DEFINE(thread);
+
+typedef struct task_t task_t;
+QUEUE_DEFINE(task_t)
+
 struct scheduler;
 {
-	struct
-	{
-		thread* data;
-		u32 size;
-	} threads;
-
-	mem_arena tasks;
-	mem_arena dependencies;
-	mem_arena semaphores;
+	vector(thread) threads;
+	queue(u32) taskq;
+	mem_pool tasks;
+	mem_pool deps;
+	mem_list locks;
 };
 
 void thread_create(thread* t, u32 flags);
@@ -86,6 +85,14 @@ int semaphore_value(semaphore* sem);
 
 void scheduler_init(scheduler* s);
 void scheduler_destroy(scheduler* s);
-u32 scheduler_addtask(scheduler* s, pfn_task task, u32 dependency);
+
+u32 task_create(scheduler* s, pfn_task task, void* data);
+u32 dependency_create(scheduler* s, u32 task);
+void dependency_add(scheduler* s, u32 task, u32 dependency);
+
+void task_wait(scheduler* s, u32 task); // increment task refcount
+void task_signal(scheduler* s, u32 task); // decrement task refcount
+
+void scheduler_submit(scheduler* s, u32* tasks);
 void scheduler_waittask(scheduler* s, u32* tasks);
 void scheduler_waitall(scheduler* s);

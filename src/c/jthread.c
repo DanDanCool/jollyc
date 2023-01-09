@@ -4,40 +4,58 @@
 #include <stdlib.h>
 
 typedef struct task_t task_t;
-typedef struct dependency_t dependency_t;
+typedef struct dep_t dep_t;
+typedef struct tasklock_t tasklock_t;
 
 struct task_t
 {
 	pfn_task task;
+	void* data;
+	u64 lock;
+	u32 in; // dependency refcount
+	u32 out; // dependencies to signal
 };
 
-struct dependency_t
+struct dep_t
 {
-	u32 lock;
 	u32 task;
 	u32 next;
+};
+
+struct tasklock_t
+{
+	u64 out; // associated dependency
+	semaphore lock;
 };
 
 static void task_function(thread* t)
 {
 	while (true)
 	{
-		thread_trykill(t);
-		thread_trypause(t);
+		while (true)
+		{
+			thread_trykill(t);
+			thread_trypause(t);
 
-		t->task(t);
+			if (true)
+				break;
+		}
+
+		task_t* task = (task_t*)t->data;
+		task->task(task->data);
 	}
 }
 
 void scheduler_init(scheduler* s)
 {
-	arena_init(s->tasks, 32, sizeof(task_t));
-	arena_init(s->dependencies, 32, sizeof(dependency_t));
-	arena_init(s->semaphores, 32, sizeof(semaphore));
+	const u32 default_size = BLOCK_32;
+	pool_init(&s->tasks, default_size, sizeof(task_t));
+	pool_init(&s->deps, default_size, sizeof(dep_t));
+	list_init(&s->locks, default_size, sizeof(tasklock_t));
 
 	system_info info;
 	get_system_info(&info);
-	s->threads.data = (thread*)aligned_alloc(64, sizeof(thread) * info.threads);
+	vector_init(thread)(&s->threads, jolly_alloc(sizeof(thread) * info.threads), info.threads);
 	s->threads.size = info.threads;
 
 	for (u32 i = 0; i < info.threads; i++)
@@ -47,13 +65,34 @@ void scheduler_init(scheduler* s)
 		thread_pause(t);
 		thread_start(t);
 	}
+
+	queue_init(task_t)(&s->taskq, jolly_alloc(sizeof(u32) * default_size), default_size);
 }
 
 void scheduler_destroy(scheduler* s)
 {
-	arena_destroy(s->tasks);
-	arena_destroy(s->dependencies);
-	arena_destroy(s->semaphores);
+	schedular_waitall(s);
+	vector_destroy(thread)(&s->threads);
+	queue_destroy(u32)(&s->taskq);
+	pool_destroy(s->tasks);
+	pool_destroy(s->deps);
+	list_destroy(s->locks);
+}
+
+u32 scheduler_taskcreate(scheduler* s, pfn_task, void* data)
+{
+	mem_block mem = pool_alloc(&s->tasks);
+	task_t* task = (task_t*)MEM_DATA(&mem);
+	task->task = task;
+	task->data = data;
+	task->signal = U32_MAX;
+	task->dependencies = U32_MAX;
+	return mem->handle;
+}
+
+u32 scheduler_dependencycreate(scheduler* s, u32 task)
+{
+
 }
 
 void thread_create(thread* t, pfn_task task, u32 flags)

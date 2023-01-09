@@ -2,197 +2,164 @@
 #include <stdlib.h>
 #include <emmintrin.h>
 
-static void gc_resize(mem_gc* gc, u32 size);
-static void gc_sort(mem_block* beg, mem_block* end);
-static mem_block* gc_partition(mem_block* beg, mem_block* end);
-static void gc_insertion(mem_block* beg, mem_block* end);
+VECTOR_DECLARE_FN(mem_block, AT, ADD, RM, RESIZE);
+VECTOR_DECLARE_FN(vector_u8, AT, ADD, RM, RESIZE);
 
-// swap if memory adress in a is greater than b
-static void swapgt(mem_block* a, mem_block* b);
-static void swap(mem_block* a, mem_block* b);
+static void mem_block_cmp(mem_block* a, mem_block* b);
+static void mem_block_swap(mem_block* a, mem_block* b);
 
-inline mem_block* arena_freeblock(mem_arena* arena)
+static const mem_block NULL_MEM_BLOCK = { NULL, U32_MAX, U32_MAX };
+
+static void heapgc_initialize(u8* data, u32 size);
+
+u8* jolly_alloc(size)
 {
-	return arena->gc.data + arena->gc.free;
+	return (u8*)aligned_alloc(BLOCK_64, size);
 }
 
 void arena_init(mem_arena* arena, u32 size, u32 blocksz)
 {
-	arena->base.reserve = size;
+	vector_init(u8)(&arena->base, jolly_alloc(size * blocksz), size);
 	arena->base.size = blocksz;
-	arena->base.data = (u8*)aligned_alloc(64, size * blocksz);
 
-	arena->gc.data = (mem_block*)aligned_alloc(64, BLOCK_128 * sizeof(mem_block));
-	arena->gc.size = 1;
-	arena->gc.cap = BLOCK_128;
-	arena->gc.new = 0;
-	arena->gc.data[0] = { arena, 0, size * blocksz };
-	arena->gc.free = 0;
+	u8* buf = jolly_alloc((BLOCK_128 - 1) * sizeof(mem_block));
+	vector_init(mem_block)(&arena->heapgc, buf, BLOCK_128 - 1);
+	arena->heapgc.size = 1;
+
+	heapgc_initalize(arena->heapgc.data, BLOCK_128 - 1);
+	arena->free = { arena, 0, size * blocksz };
 }
 
 void arena_destroy(mem_arena* arena)
 {
-	free(arena->data);
-	arena->base = {};
-
-	free(arena->gc.data);
-	arena->gc = {};
-	arena->gc.free = U32_MAX;
+	vector_destroy(u8)(&arena->base);
+	vector_destroy(mem_block)(&arena->heapgc);
+	*arena = {};
 }
 
 mem_block arena_alloc(mem_arena* arena, u32 count)
 {
-	mem_block* free = arena_freeblock(arena);
-
-	if (free->size < count * arena->base.blocksz)
-	{
+	if (arena->free.size < count * arena->base.size)
 		arena_resize(arena, arena->size * 2);
-		free = arena_freeblock(arena);
-	}
 
-	mem_block block = { &arena->base, free->handle, count * arena->base.blocksz };
+	mem_block block = { &arena->base, arena->free.handle, count * arena->base.size };
 	free->handle += count;
-	free->size -= count * arena->base.blocksz;
+	free->size -= count * arena->base.size;
 }
 
-mem_block arena_realloc(mem_block* block, u32 count)
+void arena_realloc(mem_block* block, u32 count)
 {
-	mem_arena* arena = (mem_arena*)block->owner;
+	mem_arena* arena = (mem_arena*)block->base;
 	u8* base = MEM_DATA(block);
-	mem_block* free = arena_freeblock(arena);
+	mem_block* free = &arena->free;
 
-	u32 extra = count * arena->base.blocksz - block->size;
+	u32 extra = count * arena->base.size - block->size;
 	if (base + block->size == MEM_DATA(free) && free->size > extra)
 	{
 		block->size += extra;
-		free->handle += extra / arena->base.blocksz;
+		free->handle += extra / arena->base.size;
 		free->size -= extra;
 		return;
 	}
 
 	// not enough space adjacent, reallocate
 	mem_block tmp = arena_alloc(arena, count);
+	u32 count = block->size / arena->base.blocksz;
+	vector(u8) dst = { MEM_DATA(tmp), sizeof(mem_block), count };
+	vector(u8) src = { MEM_DATA(block), sizeof(mem_block), count };
 	switch (arena->base.blocksz)
 	{
 		case BLOCK_16:
-		{
-			u32 count = block->size / BLOCK_16;
-			mem_cpy16(tmp.data, block->data, count);
+			vector_cpy16(&dst, &src);
 			break;
-		}
 		default:
-		{
-			u32 count = block->size / BLOCK_32;
-			mem_cpy32(tmp.data, block-.data, count);
+			vector_cpy32(&dst, &src);
 			break;
-		}
 	}
 
+	arena_free(block);
 	*block = tmp;
 }
 
 void arena_free(mem_block* block)
 {
-	mem_arena* arena = (mem_arena*)block->owner;
-	mem_gc* gc = &arena->gc;
-	if (gc->cap <= gc->size)
-		gc_resize(gc, gc->cap * 2);
+	mem_arena* arena = (mem_arena*)block->base;
+	vector(mem_block)* gc = &arena->heapgc;
+	vector_add(mem_block)(gc, block);
 
-	gc->data[gc->size++] = *block;
-	gc->new++;
+	sort_params params = { { (u8*)gc->data, sizeof(mem_block), gc->size },
+		&NULL_MEM_BLOCK, mem_block_cmp, mem_block_swap, 0, 0, 0 };
+	heap_add(&params);
 
-	// should only do this in debug
 	*block = {};
 }
 
 void arena_resize(mem_arena* arena, u32 size)
 {
-	u8* tmp = (u8*)aligned_alloc(64, size * arena->base.blocksz);
-	u32 copy = arena->base.size > size ? size : arena->base.size;
+	vector(u8) dst = { jolly_alloc(size * arena->base.size), arena->base.size, size };
+	vector(u8) src = { arena->base.data, arena->base.size, arena->base.reserve };
 
 	switch (arena->base.blocksz)
 	{
 		case BLOCK_16:
-		{
-			mem_cpy16(tmp, arena->base.data, copy);
+			vec_cpy16(&dst, &src);
 			break;
-		}
 		default:
-		{
-			mem_cpy32(tmp, arena->base.data, copy * arena->base.blocksz / BLOCK_32);
+			vec_cpy32(&dst, &src);
 			break;
-		}
 	}
 
+	arena_free(&arena->free);
+	arena->free = { &arena->base, arena->base.reserve, (size - arena->base.reserve) * arena->base.size };
+
 	free(arena->base.data);
-	arena->base.data = tmp;
-	arena->base.size = size;
+	arena->base.data = dst.data;
+	arena->base.reserve = size;
 }
 
 void arena_gc(mem_arena* arena)
 {
-	mem_gc* gc = arena->gc;
-	mem_block* unsorted = gc->data + gc->size - gc->new - 1;
-	gc_sort(unsorted, unsorted + gc->new);
+	arena_free(arena->free);
+	u32 offset = arena->heapgc.size % 2 ? 3 : 2;
+	u32 last = (arena->heapgc.size - offset) / 2;
+	vector(mem_block)* gc = &arena->heapgc;
+	sort_params params = { { (u8*)gc->data, sizeof(mem_block), gc->size },
+		&NULL_MEM_BLOCK, mem_block_cmp, mem_block_swap, 0, 0, 0 };
 
-	if (gc->size + gc->new * 2 > gc->cap)
-		gc_resize(gc, gc->cap * 2);
-
-	// merge sorted and newly sorted regions
-	mem_cpy32u(unsorted + gc->new, unsorted, gc->new);
-	mem_block* arr1 = gc->data + gc->size - gc->new - 1;
-	mem_block* arr2 = gc->data + gc->size + gc->new - 1;
-	mem_block* dst = gc->data + gc->size - 1;
-
-	for (u32 i = 0; i < gc->size; i++)
+	u32 i = 0;
+	mem_block* largest = vector_at(mem_block)(gc, 0);
+	while (i < last)
 	{
-		__m128i x = _mm_load_si128((__m128i*)arr1);
-		__m128i y = _mm_load_si128((__m128i*)arr2);
+		mem_block* root = vector_at(mem_block)(gc, i);
+		mem_block* left = vector_at(mem_block)(gc, 2 * i + 1);
+		mem_block* right = vector_at(mem_block)(gc, 2 * i + 2);
 
-		int mask = arr1->data > arr2->data ? 0x0 : 0xF;
-		__m128i res = _mm_blend_epi32(x, y, mask);
-		_mm_store_si128((__m128i*)dst, res);
+		largest = largest->size < root->size ? root : largest;
+		u32 next = root->handle + root->size / arena->base.size;
+		mem_block* adjacent = next == left->handle ? left : (next == right->handle ? right : NULL);
 
-		arr1 -= arr1->data > arr2->data;
-		arr2 -= !(arr1->data > arr2->data);
-		dst--;
+		if (adjacent)
+		{
+			adjacent->handle = root->handle;
+			adjacent->size += root->size;
+			params.data.reserve = gc->size;
+			heap_rm(&params);
+			vector_rm(mem_block)(gc);
+			last -= gc->size % 2 == 0;
+		}
+
+		i += adjacent == NULL;
 	}
 
-	// collect contiguous memory blocks into single memory block
-	mem_block* cur = gc->data;
-	mem_block* it = gc->data + 1;
-	for (u32 i = 0; i < gc->size; i++)
-	{
-		int next = MEM_DATA(cur) + cur->size == MEM_DATA(it);
-		cur->size = next ? cur->size + it->size : cur->size;
-		it->handle = next ? U32_MAX : it->handle;
-		cur = next ? cur : it;
-		it++;
-	}
-
-	// fill in holes in the array
-	int distance = 0;
-	int size = 0;
-	mem_block* best = gc->data;
-	cur = gc->data;
-	for (u32 i = 0; i < gc->size; i++)
-	{
-		mem_cpy16(cur - distance, cur, 1);
-		best = best->size < cur->size ? cur : best;
-		distance += cur->handle == U32_MAX;
-		size += cur->handle != U32_MAX;
-	}
-
-	gc->free = best - gc->data;
-	gc->size = size;
-	gc->new = 0;
+	arena->free = *largest;
+	heap_del(params, largest - vector_at(mem_block)(gc, 0));
+	vector_rm(mem_block)(gc);
 }
 
 void pool_init(mem_pool* pool, u32 size, u32 blocksz)
 {
-	pool->base.data = (u8*)aligned_alloc(64, size * blocksz);
-	pool->base.blocksz = blocksz;
-	pool->base.size = size;
+	vector_init(u8)(&pool->base, jolly_alloc(size * blocksz), size);
+	pool->base.size = blocksz;
 	pool->free = 0;
 
 	u32* block = (u32*)pool->base.data;
@@ -207,75 +174,40 @@ void pool_init(mem_pool* pool, u32 size, u32 blocksz)
 
 void pool_destroy(mem_pool* pool)
 {
-	free(pool->base.data);
-	pool->base = {};
+	vector_destroy(u8)(&pool->base);
 	pool->free = U32_MAX;
 }
 
 void pool_resize(mem_pool* pool, u32 size)
 {
-	u8* tmp = (u8*)aligned_alloc(64, size * pool->base.blocksz);
-	u32 copy = pool->base.size > size ? size : pool->base.size;
+	vector(u8) dst = { jolly_alloc(size * pool->base.size), pool->base.size, size };
+	vector(u8) src = { pool->base.data, pool->base.size, pool->base.reserve };
 
-	switch(pool->base.blocksz)
+	switch(pool->base.size)
 	{
 		case BLOCK_16:
-		{
-			mem_cpy16(tmp, arena->base.data, copy);
+			vec_cpy16(&dst, &src);
 			break;
-		}
 		default:
-		{
-			mem_cpy32(tmp, pool->base.data, copy * pool->base.blocksz / BLOCK32);
+			vec_cpy32(&dst, &src);
 			break;
-		}
 	}
 
-	if (size > pool->base.size)
+	u32* block = (u32*)vector_at(u8)(dst, pool->base.reserve * pool->base.size);
+	*block = pool->free;
+	block += pool->base.size / sizeof(u32);
+
+	for (u32 i = pool->base.reserve; i < size - 1; i++)
 	{
-		u32* block = tmp + pool->base.blocksz * size;
-		u32 node = pool->free;
-
-		while (node != U32_MAX)
-		{
-			block = tmp + pool->base.blocksz * last;
-			node = *block;
-		}
-
-		for (u32 i = pool->base.size; i < size; i++)
-		{
-			*block = i;
-			block += pool->base.blocksz;
-		}
-
-		*block = U32_MAX;
-		pool->free = pool->free == U32_MAX ? pool->base.size : pool->free;
+		*block = i;
+		block += pool->base.size / sizeof(u32);
 	}
-	else
-	{
-		u32* block;
-		u32 node = pool->free;
 
-		while (node != U32_MAX)
-		{
-			block = pool->base.data + pool->base.blocksz * node;
-			u32 next = *block;
-
-			while (next > size && next != U32_MAX)
-			{
-				block = pool->base.data + pool->base.blocksz * next;
-				next = *block;
-			}
-
-			block = tmp + pool->base.blocksz * node;
-			*block = next;
-			node = next;
-		}
-	}
+	pool->free = size - 1;
 
 	free(pool->base.data);
-	pool->base.data = tmp;
-	pool->base.size = size;
+	pool->base.data = dst.data;
+	pool->base.reserve = size;
 }
 
 mem_block pool_alloc(mem_pool* pool)
@@ -283,181 +215,165 @@ mem_block pool_alloc(mem_pool* pool)
 	if (pool->free == U32_MAX)
 		pool_resize(pool->base.size * 2);
 
-	mem_block mem = { &pool->base, pool->free, pool->base.blocksz };
-	u32* node = (u32*)(pool->base.data + pool->free * pool->base.blocksz);
-	pool->free = *node;
+	mem_block mem = { &pool->base, pool->free, pool->base.size };
+	pool->free = *(u32*)MEM_DATA(&mem);
 	return mem;
 }
 
 void pool_free(mem_block* mem)
 {
 	mem_pool* pool = (mem_pool*)mem->owner;
-	u32* node = (u32*)(pool->base.data + mem->handle * pool->base.blocksz);
+	u32* node = (u32*)MEM_DATA(&mem);
 	u32 tmp = mem->handle;
 	*node = pool->free;
 	pool->free = tmp;
 }
 
-mem_ptr mem_alloc(u32 size)
+static void list_initblock(mem_list* list, u32 index)
 {
-	mem_ptr mem = {};
-	mem.data = (u8*)aligned_alloc(64, size);
-	mem.size = size;
-	return mem;
-}
+	baseptr* first = vector_at(baseptr)(&list->blocks, 0);
+	u32 size = first->reserve;
+	u32 blocksz = first->size;
 
-void mem_realloc(mem_ptr* block, u32 size)
-{
-	mem_ptr tmp = mem_alloc(size);
+	baseptr* block = vector_at(baseptr)(&list->blocks, index);
+	vector_init(baseptr)(block, jolly_alloc(size * blocksz), size);
+	block->size = blocksz;
 
-	// assume that the original size is a multiple of 32
-	mem_cpy32(tmp.data, block->data, block->size / 32);
-
-	free(block->data);
-	*block = tmp;
-}
-
-void mem_free(mem_ptr* block)
-{
-	// assert that this block does not belong to an arena
-	free(block->data);
-	block->size = 0;
-}
-
-void mem_cpy16(u8* dst, u8* src, u32 count)
-{
-	for (int i = 0; i < count; i++)
+	u8* ptr = block->data;
+	for (u32 i = 1; i < size; i++)
 	{
-		__m128i tmp = _mm_load_si128((__m128i*)src);
-		_mm_store_si128((__m128i*)dst, tmp);
-
-		dst += BLOCK_16;
-		src += BLOCK_16;
-	}
-}
-
-void mem_cpy32(u8* dst, u8* src, u32 count)
-{
-	for (u32 i = 0; i < count; i++)
-	{
-		__m256i tmp = _mm256_load_si256((__m256i*)src);
-		_mm256_store_si256((__m256i*)dst, tmp);
-
-		dst += BLOCK_32;
-		src += BLOCK_32;
-	}
-}
-
-void mem_cpy16u(u8* dst, u8* src, u32 count)
-{
-	for (u32 i = 0; i < count; i++)
-	{
-		__m128i tmp = _mm_loadu_si128((__m128i*)src);
-		_mm_storeu_si128((__m128i*)dst, tmp);
-
-		dst += BLOCK_16;
-		src += BLOCK_16;
-	}
-}
-
-void mem_cpy32u(u8* dst, u8* src, u32 count)
-{
-	for (u32 i = 0; i < count; i++)
-	{
-		__m256i tmp = _mm256_loadu_si256((__m256i*)src);
-		_mm_storeu_si256((__m256i*)dst, tmp);
-
-		dst += BLOCK_32;
-		src += BLOCK_32;
-	}
-}
-
-void mem_set16(u8* dst, u32 val, u32 count)
-{
-	__m128i tmp = _mm_set1_epi32(val);
-	for (u32 i = 0; i < count; i++)
-	{
-		_mm_store_si128((__m128i*)dst, tmp);
-		dst += BLOCK_16;
-	}
-}
-
-void mem_set32(u8* dst, u32 val, u32 count)
-{
-	__m256i tmp = _mm256_set1_epi32(val);
-	for (u32 i = 0; i < count; i++)
-	{
-		_mm_store_si256((__m256i*)dst, tmp);
-		dst += BLOCK_32;
-	}
-}
-
-int mem_cmp16(u8* a, u8* b, u32 count)
-{
-	__m128i one = _mm_set1_epi8(0xFF);
-	for (u32 i = 0; i < count; i++)
-	{
-		__m128i x = _mm_load_si128((__m128i*)a);
-		__m128i y = _mm_load_si128((__m128i*)b);
-		__m128i xor = _mm_xor_si128(x, y);
-		if (!_mm_testz_si128(xor, one))
-			return 0;
+		u64* next = (u64*)ptr;
+		*next = ((u64)index << 32) | ((u64)i);
+		ptr += blocksz;
 	}
 
-	return 1;
+	*(u64*)ptr = list->free;
+	list->free = *(u64*)block->data;
 }
 
-int mem_cmp32(u8* a, u8* b, u32 count)
+void list_init(mem_list* list, u32 size, u32 blocksz)
 {
-	__m256i one = _mm256_set1_epi8(0xFF);
-	for (u32 i = 0; i < count; i++)
+	const default_size = 8;
+	vector_init(baseptr)(&list->blocks, jolly_alloc(default_size * sizeof(baseptr), default_size));
+	list->blocks.size = 1;
+	list->free = U64_MAX;
+
+	baseptr* first = vector_at(baseptr)(&list->blocks, 0);
+	first->size = blocksz;
+	first->reserve = size;
+	list_initblock(list, 0);
+}
+
+void list_destroy(mem_list* list)
+{
+	for (u32 i = 0; i < list->blocks.size; i++)
 	{
-		__m256i x = _mm256_load_si256((__m256i*)a);
-		__m256i y = _mm256_load_si256((__m256i*)b);
-		__m256i xor = _mm256_xor_si256(x, y);
-		if (!_mm256_testz_si256(xor, one))
-			return 0;
+		baseptr* block = vector_at(baseptr)(&list->blocks);
+		vector_destroy(baseptr)(block);
 	}
 
-	return 1;
+	vector_destroy(&list->blocks);
+	*list = {};
 }
 
-int mem_cmp16u(u8* a, u8* b, u32 count)
+void list_resize(mem_list* list, u32 size)
 {
-	__m128i one = _mmset1_epi8(0xFF);
-	for (u32 i = 0; i < count; i++)
-	{
-		__m128i x = _mm_loadu_si128((__m128i*)a);
-		__m128i y = _mm_loadu_si128((__m128i*)b);
-		__m128i xor = _mm_xor_si128(x, y);
-		if (!_mm_testz_si128(xor, one))
-			return 0;
-	}
+	vector(baseptr)* blocks = &list->blocks;
+	if (blocks->reserve < size)
+		vector_resize(baseptr)(blocks, size * 2);
 
-	return 1;
+	for (u32 i = blocks->size; i < size; i++)
+		list_initblock(list, i);
+
+	blocks->size = size;
 }
 
-int mem_cmp32u(u8* a, u8* b, u32 count)
+mem_block list_alloc(mem_list* list)
 {
-	__m256i one = _mm256_set1_epi8(0xFF);
-	for (u32 i = 0; i < count; i++)
-	{
-		__m256i x = _mm256_loadu_si256((__m256i*)a);
-		__m256i y = _mm256_loadu_si256((__m256i*)b);
-		__m256i xor = _mm256_xor_si256(xor, one);
-		if (!_mm256_testz_si256(xor, one))
-			return 0;
-	}
+	if (list->free == U64_MAX)
+		list_resize(list, list->blocks.size + 1);
 
-	return 1;
+	const u64 mask = (u64)U32_MAX;
+	u32 index = (u32)(list->free >> 32);
+	u32 offset = (u32)(list->free & mask);
+
+	baseptr* block = vector_at(baseptr)(&list->blocks, index);
+	u64* ptr = (u64*)vector_at(u8)(block, offset * block->size);
+	list->free = *ptr;
+
+	return { block, offset, block->size };
 }
 
-enum
+void list_free(mem_list* list, mem_block* block)
 {
-	INSERTION_THRESHOLD = 24,
+	u64* ptr = (u64*)MEM_DATA(block);
+	*ptr = list->free;
+
+	u64 index = block->owner - vector_at(baseptr)(&list->blocks, 0);
+	list->free = index << 32 | ((u64)block->handle);
 }
 
-static void swap(mem_block* a, mem_block* b)
+#define VECTOR_DEFINE_CPY(name, block, offset, load, store) \
+void name(vector(u8)* dst, vector(u8)* src) {\
+	u32 count = dst->reserve < src->reserve ? dst->reserve : src->reserve; \
+	u8* sptr = src->data; \
+	u8* dptr = dst->data; \
+	for (u32 i = 0; i < count; i++) {\
+		block tmp = load((block*)sptr); \
+		store((block*)d, tmp); \
+		dst += offset; \
+		src += offset; \
+	} \
+}
+
+VECTOR_DEFINE_CPY(vector_cpy16, __m128i, BLOCK_16, _mm_load_si128, _mm_store_si128);
+VECTOR_DEFINE_CPY(vector_cpy32, __m256i, BLOCK_32, _mm256_load_si256, _mm256_store_si256);
+VECTOR_DEFINE_CPY(vector_cpy16, __m128i, BLOCK_16, _mm_loadu_si128, _mm_storeu_si128);
+VECTOR_DEFINE_CPY(vector_cpy32, __m256i, BLOCK_32, _mm256_loadu_si256, _mm256_storeu_si256);
+
+#define VECTOR_DEFINE_SET(name, block, offset, set, store) \
+void name(vector(u8)* dst, u32 val) { \
+	block tmp = set(val); \
+	u8* dptr = dst->data; \
+	for (u32 i = 0; i < dst->reserve; i++) { \
+		store((block*)dptr, tmp); \
+		dptr += offset; \
+	} \
+}
+
+VECTOR_DEFINE_SET(vector_set16, __m128i, BLOCK_16, _mm_set1_epi32, _mm_store_si128);
+VECTOR_DEFINE_SET(vector_set32, __m256i, BLOCK_32, _mm256_set1_epi32, _mm256_store_si256);
+
+#define VECTOR_DEFINE_CMP(name, block, offset, set, load, xor, test) \
+void name(vector(u8)* dst, vector(u8)* src) { \
+	block one = set(0XFF); \
+	u32 count = dst->reserve < src->reserve ? dst->reserve : src->reserve; \
+	u8* sptr = src->data; \
+	u8* dptr = dst->data; \
+	for (u32 i = 0; i < count; i++) { \
+		block x = load((block*)sptr); \
+		block y = load((block*)dptr); \
+		block xor = xor(x, y); \
+		if (!test(xor, one)) return 0; \
+		sptr += offset; \
+		dptr += offset; \
+	} \
+	return 1; \
+}
+
+VECTOR_DEFINE_CMP(vector_cmp16, __m128i, BLOCK_16, _mm_set1_epi8, _mm_load_si128, _mm_xor_si128, _mm_testz_si128);
+VECTOR_DEFINE_CMP(vector_cmp32, __m256i, BLOCK_32, _mm256_set1_epi8, _mm256_load_si256, _mm256_xor_si256, _mm256_textz_si256);
+VECTOR_DEFINE_CMP(vector_cmp16, __m128i, BLOCK_16, _mm_set1_epi8, _mm_loadu_si128, _mm_xor_si128, _mm_testz_si128);
+VECTOR_DEFINE_CMP(vector_cmp32, __m256i, BLOCK_32, _mm256_set1_epi8, _mm256_loadu_si256, _mm256_xor_si256, _mm256_textz_si256);
+
+static void mem_block_cmp(u8* a, u8* b)
+{
+	mem_block* mema = (mem_block*)a;
+	mem_block* memb = (mem_block*)b;
+	return mema->handle - memb->handle;
+}
+
+static void mem_block_swap(u8* a, u8* b)
 {
 	__m128i x = _mm_load_si128((__m128i*)a);
 	__m128i y = _mm_load_si128((__m128i*)b);
@@ -466,70 +382,43 @@ static void swap(mem_block* a, mem_block* b)
 	_mm_store_si128((__m128i*)b, x);
 }
 
-// swap if memory adress in a is greater than b
-static void swapgt(mem_block* a, mem_block* b)
+static void heapgc_initialize(u8* data, u32 size)
 {
-	__m128i x = _mm_load_si128((__m128i*)a);
-	__m128i y = _mm_load_si128((__m128i*)b);
-
-	int mask = a->data > b->data ? 0xF : 0x0;
-	__m128i dsta = _mm_blend_epi32(x, y, mask);
-	__m128i dstb = _mm_blend_epi32(y, x, mask);
-
-	_mm_store_si128((__m128i*)a, dsta);
-	_mm_store_si128((__m128i*)b, dstb);
-}
-
-static void gc_sort(mem_block* beg, mem_block* end)
-{
-	if ((end - beg) < INSERTION_THRESHOLD)
+	__m128i fill = _mm_loadu_si128((__m128i*)&NULL_MEM_BLOCK);
+	for (u32 i = 0; i < size; i++)
 	{
-		gc_insertion(beg, end);
-		return;
-	}
-
-	mem_block* mid = gc_partition(beg, end);
-	gc_sort(beg, mid);
-	gc_sort(mid + 1, end);
-}
-
-static mem_block* gc_partition(mem_block* beg, mem_block* end)
-{
-	// pivot is the median of the beginning, middle and end
-	mem_block* mid = beg + (end - beg) / 2;
-	swapgt(beg, mid);
-	swapgt(mid, end);
-
-	while (true)
-	{
-		while (beg->data < mid->data) beg++;
-		while (end->data > mid->data) end--;
-		if (beg >= end) break;
-		swap(beg, end);
-	}
-
-	return mid;
-}
-
-static void gc_insertion(mem_block* beg, mem_block* end)
-{
-	for (int i = 1; i < end - beg; i++)
-	{
-		int j = i;
-		while (beg[j - 1] < beg[j] && j > 0)
-		{
-			swap(&beg[j - 1], &beg[j]);
-			j--;
-		}
+		_mm_store_si128((__m128i*)data, fill);
+		data += BLOCK_16;
 	}
 }
 
-static void gc_resize(mem_gc* gc, u32 size)
+static u8* heapgc_allocate(u32 size)
 {
-	mem_block* tmp = (mem_block*)aligned_alloc(64, size * sizeof(mem_block));
-	u32 copy = gc->cap > size ? size : gc->cap;
-	mem_cpy32(tmp, gc->data, copy);
-	free(gc->data);
-	gc->data = tmp;
-	gc->cap = size;
+	u8* buf = (u8*)alligned_alloc(64, size);
+	heapgc_initialize(buf, size / BLOCK_16);
+	return buf;
+}
+
+#define VEC_ALLOC(size) heapgc_allocate(size)
+#define VEC_CPY(dst, src) vector_cpy32(dst, src)
+VECTOR_DEFINE_FN(mem_block, AT, RESIZE);
+
+#define VEC_ALLOC(size) (u8*)aligned_alloc(64, size)
+VECTOR_DEFINE_FN(vector_u8, AT, RM, RESIZE);
+
+void vector_add_mem_block(vector(mem_block)* v, mem_block* data)
+{
+    if (v->reserve <= v->size)
+        vector_resize(TYPE)(v, v->reserve * 2 + 1);
+	__m128i tmp = _mm_load_si128((__m128i*)src);
+	_mm_store_si128((__m128i*)dst, tmp);
+	v->size++;
+}
+
+mem_block* vector_rm_mem_block(vector(mem_block)* v)
+{
+	v->size--;
+	__m128i fill = _mm_loadu_si128((__m128i*)&NULL_MEM_BLOCK);
+	_mm_store_si128((__m128i*)vector_at(memory_block)(v, v->size), fill);
+	return &NULL_MEM_BLOCK;
 }

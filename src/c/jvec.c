@@ -1,123 +1,155 @@
 #include "jvec.h"
 
-VECTOR_DEFINE_FN(i8, AT, ADD, RM, RESIZE);
-VECTOR_DEFINE_FN(i16, AT, ADD, RM, RESIZE);
-VECTOR_DEFINE_FN(i32, AT, ADD, RM, RESIZE);
-VECTOR_DEFINE_FN(i64, AT, ADD, RM, RESIZE);
+VECTOR_DEFINE_FN(i8, AT, RM);
+VECTOR_DEFINE_FN(i16, AT, RM);
+VECTOR_DEFINE_FN(i32, AT, RM);
+VECTOR_DEFINE_FN(i64, AT, RM);
 
-VECTOR_DEFINE_FN(u8, AT, ADD, RM, RESIZE);
-VECTOR_DEFINE_FN(u16, AT, ADD, RM, RESIZE);
-VECTOR_DEFINE_FN(u32, AT, ADD, RM, RESIZE);
-VECTOR_DEFINE_FN(u64, AT, ADD, RM, RESIZE);
+VECTOR_DEFINE_FN(u8, AT, RM);
+VECTOR_DEFINE_FN(u16, AT, RM);
+VECTOR_DEFINE_FN(u32, AT, RM);
+VECTOR_DEFINE_FN(u64, AT, RM);
 
 
-VECTOR_DEFINE_FN(f32, AT, ADD, RM, RESIZE);
-VECTOR_DEFINE_FN(f64, AT, ADD, RM, RESIZE);
+VECTOR_DEFINE_FN(f32, AT, RM);
+VECTOR_DEFINE_FN(f64, AT, RM);
 
 enum
 {
 	INSERTION_SORT_THRESH = 24,
 };
 
-void vec_add(vector* v, u8* data)
-{
-	if (v->size * v->blocksz >= v->data.size)1
-		vec_resize(v, v->size * 2);
-
-	// size of the type is not known ahead of time hence this
-	memcpy(vec_at(v, v->size), data, v->blocksz);
-	v->size++;
-}
-
-u8* vec_rm(vector* v)
-{
-	v->size--;
-	return vec_at(v, v->size);
-}
-
-void vec_resize(vector* v, u32 size)
-{
-	if (v->data.handle == U32_MAX)
-		mem_realloc(&v->data, size * v->blocksz);
-	else
-		arena_realloc(&v->data, size);
-}
-
-static void insertion(vector(u8)* data, u32 beg, u32 end, pfm_cmp cmp, pfn_swap swap)
+static void insertion(sort_params* params, u32 beg, u32 end)
 {
 	int size = end - beg;
 	for (int i = 1; i < size; i++)
 	{
 		int j = i;
-		u8* offset = vector_at(u8)(data, (j - 1) * data->size);
-		while (j > 0 && cmp(offset, offset + data->size) > 0)
+		u8* offset = vector_at(u8)(&params->data, (j - 1) * params->data.size);
+		while (j > 0 && params->cmp(offset, offset + params->data.size) > 0)
 		{
 			swap(offset, offset + data->size);
 			j--;
-			offset -= data->size;
+			offset -= params->data.size;
 		}
 	}
 }
 
-static void heapsort()
-{
-
-}
-
-static u32 partition(vector(u8)* data, u32 beg, u32 end, pfn_cmp cmp, pfn_swap swap)
+static u32 partition(sort_params* params, u32 beg, u32 end)
 {
 	u32 mid = (beg + end) / 2;
-	u8* pbeg = vector_at(u8)(data, beg * data->size);
-	u8* pend = vector_at(u8)(data, end * data->size);
-	u8* pmid = vector_at(u8)(data, mid * data->size);
+	u8* pbeg = vector_at(u8)(&params->data, beg * params->data.size);
+	u8* pend = vector_at(u8)(&params->data, end * params->data.size);
+	u8* pmid = vector_at(u8)(&params->data, mid * params->data.size);
 
-	swapbm = cmp(pbeg, pmid) > 0;
+	swapbm = params->cmp(pbeg, pmid) > 0;
 	u8* tmp = swapbm ? pbeg : pmid;
-	swap(tmp, mid);
+	params->swap(tmp, mid);
 
-	swapem = cmp(pend, pmid) < 0;
+	swapem = params->cmp(pend, pmid) < 0;
 	tmp = swapem ? pend : pmid;
-	swap(mid, end);
+	params->swap(mid, end);
 
 	while (true)
 	{
-		while (cmp(pbeg, pmid) < 1)
+		while (params->cmp(pbeg, pmid) < 1)
 			pbeg += data->size;
 
-		while (cmp(pend, pmid) > 0)
+		while (params->cmp(pend, pmid) > 0)
 			pend -= blocksz;
 
 		if (pbeg >= pend)
 			break;
 
-		swap(pbeg, pend);
+		params->swap(pbeg, pend);
 	}
 
 	return mid;
 }
 
-static void sort_internal(vector(u8)* data, u32 beg, u32 end, pfn_cmp cmp, pfn_swap swap)
+static void sort_internal(sort_params* params, u32 beg, u32 end)
 {
 	u32 size = end - beg;
-	if (size < INSERTION_SORT_THRESH)
+	if (size < params->insertion_thresh)
 	{
-		insertion(data, beg, end, cmp, swap);
+		insertion(params, beg, end);
 		return;
 	}
 
-	u32 mid = partition(data, beg, end, blocksz, cmp);
-	sort_internal(data, beg, mid, cmp, swap);
-	sort_internal(data, mid, end, cmp, swap);
+	params->depth++;
+	u32 mid = partition(params, beg, end);
+	sort_internal(params, beg, mid);
+	sort_internal(params, mid, end);
 }
 
-void quick_sort(vector(u8)* data, pfn_cmp cmp, pfn_swap swap)
+void vector_sort(sort_params* params)
 {
 	u32 beg = 0;
-	u32 end = data->reserve - 1;
-	sort_internal(data, beg, end, cmp, swap);
+	u32 end = params->data.reserve - 1;
+	sort_internal(params, beg, end);
 }
 
-void heap(vector(u8)* data, pfn_cmp cmp, pfn_swap swap)
+static void siftup(sort_params* params, u32 index)
 {
+	u32 offset = index % 2 ? 1 : 2;
+	u32 p = (index - offset) / 2;
+	u8* iptr = vector_at(u8)(&params->data, index * params->data.size);
+	u8* parent = vector_at(u8)(&params->data, p * params->data.size);
 
+	while (p >= 0 && params->cmp(iptr, parent) < 0)
+	{
+		params->swap(iptr, parent);
+		index = p;
+		offset = index % 2 ? 1 : 2;
+		p = (index - offset) / 2;
+		iptr = vector_at(u8)(&params->data, index * params->data.size);
+		parent = vector_at(u8)(&params->data, p * params->data.size);
+	}
+}
+
+static void siftdown(sort_params* params, u32 index)
+{
+	u32 left = 2 * index + 1;
+	u32 right = 2 * index + 2;
+	while (left < params->data.reserve)
+	{
+		u8* iptr = vector_at(u8)(&params->data, index * params->data.size);
+		u8* lptr = vector_at(u8)(&params->data, left * params->data.size);
+		u8* rptr = right < params->data.reserve ? vector_at(u8)(&params->data, right * params->data.size) : params->null_value;
+
+		index = params->cmp(lptr, rptr) < 0 ? left : right;
+		u8* swap = vector_at(u8)(&params->data, index * params->data.size);
+		if (params->cmp(iptr, swap) < 0)
+			break;
+
+		params->swap(iptr, swap);
+		left = 2 * index + 1;
+		right = 2 * index + 2;
+	}
+}
+
+void heap(sort_params* params)
+{
+	u32 offset = params->data.reserve % 2 ? 3 : 2;
+	u32 i = (params->data.reserve - offset) / 2;
+	for (; i >= 0; i--)
+		siftdown(params, i);
+}
+
+void heap_add(sort_params* params)
+{
+	siftup(params, params->data.reserve - 1);
+}
+
+void heap_del(sort_params* params, u32 i)
+{
+	u8* root = vector_at(u8)(&params->data, i);
+	u8* last = vector_at(u8)(&params->data, (params->data.reserve - 1) * params->data.size);
+	params->swap(root, last);
+	siftdown(params, i);
+}
+
+void heap_rm(sort_params* params)
+{
+	heap_del(params, 0);
 }
