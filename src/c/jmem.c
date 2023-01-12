@@ -12,7 +12,7 @@ static const mem_block NULL_MEM_BLOCK = { NULL, U32_MAX, U32_MAX };
 
 static void heapgc_initialize(u8* data, u32 size);
 
-u8* jolly_alloc(size)
+u8* jolly_alloc(u32 size)
 {
 	return (u8*)aligned_alloc(BLOCK_64, size);
 }
@@ -196,7 +196,6 @@ void pool_resize(mem_pool* pool, u32 size)
 	u32* block = (u32*)vector_at(u8)(dst, pool->base.reserve * pool->base.size);
 	*block = pool->free;
 	block += pool->base.size / sizeof(u32);
-
 	for (u32 i = pool->base.reserve; i < size - 1; i++)
 	{
 		*block = i;
@@ -213,7 +212,7 @@ void pool_resize(mem_pool* pool, u32 size)
 mem_block pool_alloc(mem_pool* pool)
 {
 	if (pool->free == U32_MAX)
-		pool_resize(pool->base.size * 2);
+		pool_resize(pool->base.reserve * 2);
 
 	mem_block mem = { &pool->base, pool->free, pool->base.size };
 	pool->free = *(u32*)MEM_DATA(&mem);
@@ -222,7 +221,7 @@ mem_block pool_alloc(mem_pool* pool)
 
 void pool_free(mem_block* mem)
 {
-	mem_pool* pool = (mem_pool*)mem->owner;
+	mem_pool* pool = (mem_pool*)mem->base;
 	u32* node = (u32*)MEM_DATA(&mem);
 	u32 tmp = mem->handle;
 	*node = pool->free;
@@ -254,7 +253,7 @@ static void list_initblock(mem_list* list, u32 index)
 void list_init(mem_list* list, u32 size, u32 blocksz)
 {
 	const default_size = 8;
-	vector_init(baseptr)(&list->blocks, jolly_alloc(default_size * sizeof(baseptr), default_size));
+	vector_init(baseptr)(&list->blocks, jolly_alloc(default_size * sizeof(baseptr)), default_size);
 	list->blocks.size = 1;
 	list->free = U64_MAX;
 
@@ -268,7 +267,7 @@ void list_destroy(mem_list* list)
 {
 	for (u32 i = 0; i < list->blocks.size; i++)
 	{
-		baseptr* block = vector_at(baseptr)(&list->blocks);
+		baseptr* block = vector_at(baseptr)(&list->blocks, i);
 		vector_destroy(baseptr)(block);
 	}
 
@@ -280,12 +279,12 @@ void list_resize(mem_list* list, u32 size)
 {
 	vector(baseptr)* blocks = &list->blocks;
 	if (blocks->reserve < size)
-		vector_resize(baseptr)(blocks, size * 2);
+		vector_resize(baseptr)(blocks, size);
 
 	for (u32 i = blocks->size; i < size; i++)
 		list_initblock(list, i);
 
-	blocks->size = size;
+	blocks->size = size < blocks->size ? blocks-i>size : size;
 }
 
 mem_block list_alloc(mem_list* list)
@@ -309,7 +308,7 @@ void list_free(mem_list* list, mem_block* block)
 	u64* ptr = (u64*)MEM_DATA(block);
 	*ptr = list->free;
 
-	u64 index = block->owner - vector_at(baseptr)(&list->blocks, 0);
+	u64 index = block->base - vector_at(baseptr)(&list->blocks, 0);
 	list->free = index << 32 | ((u64)block->handle);
 }
 

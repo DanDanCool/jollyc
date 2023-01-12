@@ -44,10 +44,10 @@ QUEUE_DEFINE(task_t)
 struct scheduler;
 {
 	vector(thread) threads;
-	queue(u32) taskq;
-	mem_pool tasks;
-	mem_pool deps;
-	mem_list locks;
+	atomic_queue(u32) taskq;
+	atomic_mem_pool tasks;
+	atomic_mem_pool deps;
+	atomic_mem_list locks;
 };
 
 void thread_create(thread* t, u32 flags);
@@ -74,7 +74,7 @@ void thread_exit(thread* t);
 // yield remaining scheduler time
 void thread_yield(thread* t);
 
-void semaphore_create(semaphore* sem);
+void semaphore_init(semaphore* sem);
 void semaphore_destroy(semaphore* sem);
 
 void semaphore_wait(semaphore* sem);
@@ -93,6 +93,6 @@ void dependency_add(scheduler* s, u32 task, u32 dependency);
 void task_wait(scheduler* s, u32 task); // increment task refcount
 void task_signal(scheduler* s, u32 task); // decrement task refcount
 
-void scheduler_submit(scheduler* s, u32* tasks);
-void scheduler_waittask(scheduler* s, u32* tasks);
+void scheduler_submit(scheduler* s, u32* tasks, u32 count);
+void scheduler_waittask(scheduler* s, u32* tasks, u32 count);
 void scheduler_waitall(scheduler* s);

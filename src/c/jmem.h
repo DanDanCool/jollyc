@@ -63,7 +63,8 @@ struct mem_list
 
 inline u8* MEM_DATA(mem_block* block)
 {
-	return vector_at(u8)(owner, block->handle * owner->size)
+	baseptr* base = block->base;
+	return vector_at(u8)(base, block->handle * base->size)
 }
 
 u8* jolly_alloc(size);

@@ -34,7 +34,7 @@ TYPE* vector_at(TYPE)(vector(TYPE)* v, u32 index)
 void vector_add(TYPE)(vector(TYPE)* v, TYPE* data)
 
 #define VECTOR_DECLARE_RM(TYPE) \
-TYPE* vector_rm(TYPE)(vector(TYPE)* v, TYPE* data)
+TYPE* vector_rm(TYPE)(vector(TYPE)* v)
 
 #define VECTOR_DECLARE_RESIZE(TYPE) \
 void vector_resize(TYPE)(vector(TYPE)* v, u32 size)
@@ -120,12 +120,21 @@ TYPE* vector_rm(TYPE)(vector(TYPE)* v) { \
 #define VECTOR_DEFINE_RESIZE(TYPE) \
 void vector_resize(TYPE)(vector(TYPE)* v, u32 size) {\
 	vector(u8) dst = { VEC_ALLOC(size * sizeof(TYPE)), sizeof(TYPE), size }; \
-	vector(u8) src = { (u8*)v->data, sizeof(mem_block), v->size }; \
+	vector(u8) src = { (u8*)v->data, sizeof(TYPE), v->size }; \
 	VEC_CPY(&dst, &src); \
 	free(v->data); \
 	v->data = (TYPE*)dst.data; \
 	v->reserve = size; \
 }
+
+#define VECTOR_DECLARE_FN__() VECTOR_DECLARE_FN_
+
+#define VECTOR_DECLARE_FN_(TYPE, arg, ...) \
+VECTOR_DECLARE_##arg(TYPE); \
+__VA_OPT__(VECTOR_DECLARE_FN__ PAREN (TYPE, __VA_ARGS__))
+
+#define VECTOR_DECLARE_FN(TYPE, arg, ...) \
+__VA_OPT__(EXPAND(VECTOR_DECLARE_FN_(TYPE, __VA_ARGS__)))
 
 #define QUEUE_DEFINE(TYPE) \
 struct queue_##TYPE { \
@@ -155,38 +164,32 @@ TYPE* queue_at(TYPE)(queue(TYPE)* q, u32 index) { \
 // see requirements for vector_add
 #define QUEUE_DEFINE_PUSH(TYPE) \
 void queue_push(TYPE)(queue(TYPE)* q, TYPE* data) { \
-	if (q->data.reserve <= q->data.size) \
+	if (q->data.reserve <= q->data.size) { \
 		vector_resize(TYPE)(&q->data, q->data.size * 2); \
+		q->end = q->data.size; \
+	} \
 	VEC_MEMCPY((u8*)queue_at(TYPE)(q, q->end), (u8*)data, sizeof(TYPE)); \
+	q->end = (q->end + 1) % q->data.reserve; \
 	q->data.size++; \
-	q->end++; \
 }
 
 // see requirements for vector_rm
 #define QUEUE_DEFINE_POP(TYPE) \
 TYPE* queue_pop(TYPE)(queue(TYPE)* q) { \
 	assert(q->begin <= q->end); \
+	q->data.size--; \
 	u32 tmp = q->begin++; \
 	return queue_at(TYPE)(q, tmp); \
 }
 
-#define VECTOR_DEFINE_FN__() VECTOR_DEFINE_FN_
+#define QUEUE_DEFINE_FN__() QUEUE_DEFINE_FN_
 
-#define VECTOR_DEFINE_FN_(TYPE, arg, ...) \
-VECTOR_DEFINE_##arg(TYPE); \
-__VA_OPT__(VECTOR_DEFINE_FN__ PAREN (TYPE, __VA_ARGS__))
+#define QUEUE_DEFINE_FN_(TYPE, arg, ...) \
+QUEUE_DEFINE_##arg(TYPE); \
+__VA_OPT__(QUEUE_DEFINE_FN__ PAREN (TYPE, __VA_ARGS__))
 
-#define VECTOR_DEFINE_FN(TYPE, ...) \
-__VA_OPT__(EXPAND(VECTOR_DEFINE_FN_(TYPE, __VA_ARGS__)))
-
-#define VECTOR_DECLARE_FN__() VECTOR_DECLARE_FN_
-
-#define VECTOR_DECLARE_FN_(TYPE, arg, ...) \
-VECTOR_DECLARE_##arg(TYPE); \
-__VA_OPT__(VECTOR_DECLARE_FN__ PAREN (TYPE, __VA_ARGS__))
-
-#define VECTOR_DECLARE_FN(TYPE, arg, ...) \
-__VA_OPT__(EXPAND(VECTOR_DECLARE_FN_(TYPE, __VA_ARGS__)))
+#define QUEUE_DEFINE_FN(TYPE, ...) \
+__VA_OPT__(EXPAND(QUEUE_DEFINE_FN_(TYPE, __VA_ARGS__)))
 
 // -1 if a < b
 // +1 if a > b
