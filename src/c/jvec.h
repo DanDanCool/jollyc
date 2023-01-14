@@ -7,6 +7,8 @@
 #define vector_init(TYPE) vector_init_##TYPE
 #define vector_destroy(TYPE) vector_destroy_##TYPE
 #define vector_at(TYPE) vector_at_##TYPE
+#define vector_load(TYPE) vector_load_##TYPE
+#define vector_store(TYPE) vector_store_##TYPE
 #define vector_add(TYPE) vector_add_##TYPE
 #define vector_rm(TYPE) vector_rm_##TYPE
 #define vector_resize(TYPE) vector_resize_##TYPE
@@ -29,6 +31,12 @@ void vector_destroy(TYPE)(vector(TYPE)* v)
 
 #define VECTOR_DECLARE_AT(TYPE) \
 TYPE* vector_at(TYPE)(vector(TYPE)* v, u32 index)
+
+#define VECTOR_DECLARE_LOAD(TYPE) \
+void vector_load(TYPE)(vector(TYPE)* v, u32 index, TYPE* out)
+
+#define VECTOR_DECLARE_STORE(TYPE) \
+void vector_store(TYPE)(vector(TYPE)* v, u32 index, TYPE* in)
 
 #define VECTOR_DECLARE_ADD(TYPE) \
 void vector_add(TYPE)(vector(TYPE)* v, TYPE* data)
@@ -100,12 +108,22 @@ TYPE* vector_at(TYPE)(vector(TYPE)* v, u32 index) { \
 	return v->data + index; \
 }
 
+#define VECTOR_DEFINE_LOAD(TYPE) \
+void vector_load(TYPE)(vector(TYPE)* v, u32 index, TYPE* out) { \
+	VEC_MEMCPY((u8*)out, (u8*)vector_at(TYPE)(v, index), sizeof(TYPE)); \
+}
+
+#define VECTOR_DEFINE_STORE(TYPE) \
+void vector_store(TYPE)(vector(TYPE)* v, u32 index, TYPE* in) { \
+	VEC_MEMCPY((u8*)vector_at(TYPE)(v, index), (u8*)in, sizeof(TYPE)); \
+}
+
 // require definition of VEC_MEMCOPY, vector_resize
 #define VECTOR_DEFINE_ADD(TYPE) \
 void vector_add(TYPE)(vector(TYPE)* v, TYPE* data) {\
     if (v->reserve <= v->size) \
         vector_resize(TYPE)(v, v->size * 2); \
-	VEC_MEMCPY((u8*)vector_at(TYPE)(v, v->size), (u8*)data, sizeof(TYPE)); \
+	vector_store(TYPE)(v, v->size, data); \
 	v->size++; \
 }
 
@@ -168,7 +186,7 @@ void queue_push(TYPE)(queue(TYPE)* q, TYPE* data) { \
 		vector_resize(TYPE)(&q->data, q->data.size * 2); \
 		q->end = q->data.size; \
 	} \
-	VEC_MEMCPY((u8*)queue_at(TYPE)(q, q->end), (u8*)data, sizeof(TYPE)); \
+	vector_store(TYPE)(&q->data, q->end, data); \
 	q->end = (q->end + 1) % q->data.reserve; \
 	q->data.size++; \
 }

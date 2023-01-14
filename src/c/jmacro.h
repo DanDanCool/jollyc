@@ -39,3 +39,5 @@ __VA_OPT__(FOR_EACH__ PAREN (macro, __VA_ARGS__))
 #define FOR_EACH(macro, ...) \
 	__VA_OPT__(EXPAND(FOR_EACH_(macro, __VA_ARGS__)))
 
+// note: assumes two's complement
+#define ABS(x) ((x) & (1 << 31)) ? 1 + ~(x) : (x)
