@@ -3,6 +3,8 @@
 #include "jtype.h"
 #include "jmacro.h"
 
+// consider generic "ptr" types to allow memory from allocators to mesh better
+
 #define vector(TYPE) vector_##TYPE
 #define vector_init(TYPE) vector_init_##TYPE
 #define vector_destroy(TYPE) vector_destroy_##TYPE
@@ -232,11 +234,13 @@ struct sort_params
 	u16 depth;
 };
 
+// rewrite, switching to macro based type templating
 void vector_sort(sort_params* params);
 void heap(sort_params* params);
 void heap_add(sort_params* params); // assumes new data already appended to end of array
 void heap_del(sort_params* params, u32 i);
 void heap_rm(sort_params* params); // will set root to last element, remove with pop()
+void heap_replace(sort_params* params);
 
 VECTOR_DEFINE(i8);
 VECTOR_DECLARE_FN(i8, AT, ADD, RM, RESIZE);

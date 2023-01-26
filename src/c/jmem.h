@@ -67,6 +67,10 @@ inline u8* MEM_DATA(mem_block* block)
 	return vector_at(u8)(base, block->handle * base->size)
 }
 
+// GCC language extension
+#define MEM_GUARD(TYPE, dtor) TYPE __attribute__((cleanup(dtor)))
+
+// force multiple of 64 allocation size
 u8* jolly_alloc(size);
 
 void arena_init(mem_arena* arena, u32 size, u32 blocksz);

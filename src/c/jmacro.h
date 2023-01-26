@@ -30,14 +30,14 @@ _61,_62,_63,N,...) N
 19,18,17,16,15,14,13,12,11,10, \
 9,8,7,6,5,4,3,2,1,0
 
-#define FOR_EACH__() FOR_EACH_
+#define STR(x) #x
+#define CAT(a, b) a##b
 
-#define FOR_EACH_(macro, arg, ...) \
-macro(arg); \
-__VA_OPT__(FOR_EACH__ PAREN (macro, __VA_ARGS__))
+#define make_iterator(TYPE, x, vec) iterator(TYPE) x = iterator_create(TYPE)(vec)
 
-#define FOR_EACH(macro, ...) \
-	__VA_OPT__(EXPAND(FOR_EACH_(macro, __VA_ARGS__)))
+// iter is an iterator structure
+#define for_each(x, iter) \
+for (typeof(iter.sentinel)* x = iter.begin(&iter); iter.end(&iter); x = iter.next(&iter))
 
 // note: assumes two's complement
 #define ABS(x) ((x) & (1 << 31)) ? 1 + ~(x) : (x)

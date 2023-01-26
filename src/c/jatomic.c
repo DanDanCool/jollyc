@@ -15,7 +15,7 @@ int spinlock_wait(_Atomic(u32)* lock, u32 target)
 	u32 val = atomic_load_explicit(lock, memory_order_relaxed) & ~target;
 	while (!atomic_compare_exchange_weak_explicit(lock, &val, val | target, memory_order_release, memory_order_relaxed))
 	{
-		acquired = 0;
+		acquired = acquired ? val & target : 0;
 		val = val & ~target;
 		spincount += SPIN_BACKOFF_MULTIPLIER;
 		i64 end = _rdtsc() + spincount;
@@ -51,7 +51,7 @@ int spinlock_nolock(_Atomic(u32)* lock, u32 target)
 	u32 val = atomic_load_explicit(lock, memory_order_relaxed) & ~target;
 	while (!atomic_compare_exchange_weak_explicit(lock, &val, val, memory_order_release, memory_order_relaxed))
 	{
-		acquired = 0;
+		acquired = acquired ? val & target : 0;
 		val = val & ~target;
 		spincount += SPIN_BACKOFF_MULTIPLIER;
 		i64 end = _rdtsc() + spincount;

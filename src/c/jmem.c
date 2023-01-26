@@ -327,8 +327,8 @@ void name(vector(u8)* dst, vector(u8)* src) {\
 
 VECTOR_DEFINE_CPY(vector_cpy16, __m128i, BLOCK_16, _mm_load_si128, _mm_store_si128);
 VECTOR_DEFINE_CPY(vector_cpy32, __m256i, BLOCK_32, _mm256_load_si256, _mm256_store_si256);
-VECTOR_DEFINE_CPY(vector_cpy16, __m128i, BLOCK_16, _mm_loadu_si128, _mm_storeu_si128);
-VECTOR_DEFINE_CPY(vector_cpy32, __m256i, BLOCK_32, _mm256_loadu_si256, _mm256_storeu_si256);
+VECTOR_DEFINE_CPY(vector_cpy16u, __m128i, BLOCK_16, _mm_loadu_si128, _mm_storeu_si128);
+VECTOR_DEFINE_CPY(vector_cpy32u, __m256i, BLOCK_32, _mm256_loadu_si256, _mm256_storeu_si256);
 
 #define VECTOR_DEFINE_SET(name, block, offset, set, store) \
 void name(vector(u8)* dst, u32 val) { \
