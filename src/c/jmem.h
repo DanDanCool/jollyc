@@ -3,6 +3,12 @@
 #include "jtype.h"
 #include "jvec.h"
 
+INTERFACE(mem)
+{
+	void (*vfree)(u8* ptr);
+	u8* (*vresize)(u8* ptr);
+};
+
 enum
 {
 	BLOCK_16 = 16,
@@ -22,6 +28,15 @@ typedef struct mem_block mem_block;
 typedef struct mem_arena mem_arena;
 typedef struct mem_pool mem_pool;
 typedef struct mem_list mem_list;
+typedef struct mem_header mem_header;
+
+struct mem_header
+{
+	baseptr* base;
+	vmem* vtable;
+	u32 size;
+	u32 offset;
+};
 
 struct mem_block
 {

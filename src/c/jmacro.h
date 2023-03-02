@@ -41,3 +41,14 @@ for (typeof(iter.sentinel)* x = iter.begin(&iter); iter.end(&iter); x = iter.nex
 
 // note: assumes two's complement
 #define ABS(x) ((x) & (1 << 31)) ? 1 + ~(x) : (x)
+
+#define INTERFACE(NAME) \
+typdef struct interface_##NAME interface_##NAME; \
+typdef interface_##NAME* v##NAME; \
+struct interface_##NAME
+
+#define INTERFACE_DECLARE(interface, name) \
+extern const interface name;
+
+#define INTERFACE_IMPL(interface, name) \
+const interface name =
