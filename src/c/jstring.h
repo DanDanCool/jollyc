@@ -4,8 +4,7 @@
 #include "jmem.h"
 
 // recommended to use a block size of at least 32
-typedef struct
-{
+typedef struct {
 	mem_block data;
 	uint32 size;
 } string;

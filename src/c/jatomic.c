@@ -3,18 +3,15 @@
 
 u8* jolly_alloc(u32 size);
 
-enum
-{
+enum {
 	SPIN_BACKOFF_MULTIPLIER = 140,
 };
 
-int spinlock_wait(_Atomic(u32)* lock, u32 target)
-{
+int spinlock_wait(_Atomic(u32)* lock, u32 target) {
 	int acquired = 1;
 	i64 spincount = 0;
 	u32 val = atomic_load_explicit(lock, memory_order_relaxed) & ~target;
-	while (!atomic_compare_exchange_weak_explicit(lock, &val, val | target, memory_order_release, memory_order_relaxed))
-	{
+	while (!atomic_compare_exchange_weak_explicit(lock, &val, val | target, memory_order_release, memory_order_relaxed)) {
 		acquired = acquired ? val & target : 0;
 		val = val & ~target;
 		spincount += SPIN_BACKOFF_MULTIPLIER;
@@ -26,14 +23,11 @@ int spinlock_wait(_Atomic(u32)* lock, u32 target)
 	return acquired;
 }
 
-int spinlock_trywait(_Atomic(u32)* lock, u32 target)
-{
+int spinlock_trywait(_Atomic(u32)* lock, u32 target) {
 	int acquired = 1;
 	u32 val = atomic_load_explicit(lock, memory_order_relaxed) & ~target;
-	while (!atomic_compare_exchange_weak_explicit(lock, &val, val | target, memory_order_release, memory_order_relaxed))
-	{
-		if (val & target)
-		{
+	while (!atomic_compare_exchange_weak_explicit(lock, &val, val | target, memory_order_release, memory_order_relaxed)) {
+		if (val & target) {
 			acquired = 0;
 			break;
 		}
@@ -44,13 +38,11 @@ int spinlock_trywait(_Atomic(u32)* lock, u32 target)
 	return acquired;
 }
 
-int spinlock_nolock(_Atomic(u32)* lock, u32 target)
-{
+int spinlock_nolock(_Atomic(u32)* lock, u32 target) {
 	int acquired = 1;
 	i64 spincount = 0;
 	u32 val = atomic_load_explicit(lock, memory_order_relaxed) & ~target;
-	while (!atomic_compare_exchange_weak_explicit(lock, &val, val, memory_order_release, memory_order_relaxed))
-	{
+	while (!atomic_compare_exchange_weak_explicit(lock, &val, val, memory_order_release, memory_order_relaxed))	{
 		acquired = acquired ? val & target : 0;
 		val = val & ~target;
 		spincount += SPIN_BACKOFF_MULTIPLIER;
@@ -62,22 +54,19 @@ int spinlock_nolock(_Atomic(u32)* lock, u32 target)
 	return acquired;
 }
 
-void spinlock_signal(_Atomic(u32)* lock, u32 target)
-{
+void spinlock_signal(_Atomic(u32)* lock, u32 target) {
 	u32 val = atomic_load_explicit(lock, memory_order_relaxed);
 	while (!atomic_compare_exchange_weak_explicit(lock, &val, val & ~target, memory_order_release, memory_order_relaxed));
 }
 
-void atomic_pool_init(atomic_mem_pool* pool, u32 size, u32 blocksz)
-{
+void atomic_pool_init(atomic_mem_pool* pool, u32 size, u32 blocksz) {
 	u8* buf = jolly_alloc(size * blocksz);
 	atomic_vector_init(u8)(&pool->base, buf, size);
 	atomic_init(&pool->base.size, blocksz);
 	atomic_init(&pool->free, 0);
 
 	u32* block = (u32*)buf;
-	for (u32 i = 1; i < size; i++)
-	{
+	for (u32 i = 1; i < size; i++) {
 		*block = i;
 		block += blocksz;
 	}

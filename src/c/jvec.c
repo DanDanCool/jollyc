@@ -1,18 +1,21 @@
 #include "jvec.h"
 
-VECTOR_DEFINE_FN(i8, AT, RM);
-VECTOR_DEFINE_FN(i16, AT, RM);
-VECTOR_DEFINE_FN(i32, AT, RM);
-VECTOR_DEFINE_FN(i64, AT, RM);
+void vector_destroy(vector(TYPE)* v)
+{
+	mem_vfree(v->data);
+	*v = {};
+}
 
-VECTOR_DEFINE_FN(u8, AT, RM);
-VECTOR_DEFINE_FN(u16, AT, RM);
-VECTOR_DEFINE_FN(u32, AT, RM);
-VECTOR_DEFINE_FN(u64, AT, RM);
+void vector_resize(vector* v, u32 size)
+{
+	v->data = mem_vresize(v->data, size);
+}
 
-
-VECTOR_DEFINE_FN(f32, AT, RM);
-VECTOR_DEFINE_FN(f64, AT, RM);
+void queue_destroy(queue* q)
+{
+	vector_destroy(TYPE)(&q->data);
+	*q = {};
+}
 
 enum
 {

@@ -1,5 +1,9 @@
 #pragma once
 
+#define MAGIC 'j' << 24 | 'o' << 16 | 11 << 8 | 'y'
+
+#define MM256 u32 __attribute__((aligned(256)))
+
 #define PAREN ()
 
 // recursively expand macros up to 324 times https://www.scs.stanford.edu/~dm/blog/va-opt.html
@@ -33,22 +37,32 @@ _61,_62,_63,N,...) N
 #define STR(x) #x
 #define CAT(a, b) a##b
 
-#define make_iterator(TYPE, x, vec) iterator(TYPE) x = iterator_create(TYPE)(vec)
-
-// iter is an iterator structure
-#define for_each(x, iter) \
-for (typeof(iter.sentinel)* x = iter.begin(&iter); iter.end(&iter); x = iter.next(&iter))
+#define elif else if
 
 // note: assumes two's complement
 #define ABS(x) ((x) & (1 << 31)) ? 1 + ~(x) : (x)
 
 #define INTERFACE(NAME) \
-typdef struct interface_##NAME interface_##NAME; \
-typdef interface_##NAME* v##NAME; \
+typedef struct interface_##NAME interface_##NAME; \
+typedef interface_##NAME* interface(NAME); \
 struct interface_##NAME
 
-#define INTERFACE_DECLARE(interface, name) \
-extern const interface name;
+#define INTERFACE_DECLARE(name, impl) \
+extern const interface(interface) interface_impl(name, impl)
 
-#define INTERFACE_IMPL(interface, name) \
-const interface name =
+#define INTERFACE_IMPL(name, impl) \
+const interface(name) interface_impl(name, impl) =
+
+#define interface(NAME) v##NAME
+#define interface_impl(name, impl) interface(NAME)##_##impl
+
+#define vdispatch(name) vtable->##name
+
+#define DECLARE_FN__() DECLARE_FN_
+
+#define DECLARE_FN_(STRUCT, TYPE, arg, ...) \
+STRUCT##_##arg(TYPE); \
+__VA_OPT__(DECLARE_FN__ PAREN (NAME, TYPE, __VA_ARGS__))
+
+#define DECLARE_FN(STRUCT, TYPE, ...) \
+__VA_OPT__(EXPAND(DECLARE_FN_(STRUCT, TYPE, __VA_ARGS__)))

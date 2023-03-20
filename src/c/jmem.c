@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <emmintrin.h>
 
+#define ALIGN_SIZE(sz) ((((size) - 1) / BLOCK_32 + 1) * BLOCK_32)
+
 VECTOR_DECLARE_FN(mem_block, AT, ADD, RM, RESIZE);
 VECTOR_DECLARE_FN(vector_u8, AT, ADD, RM, RESIZE);
 
@@ -12,412 +14,355 @@ static const mem_block NULL_MEM_BLOCK = { NULL, U32_MAX, U32_MAX };
 
 static void heapgc_initialize(u8* data, u32 size);
 
-u8* jolly_alloc(u32 size)
-{
-	return (u8*)aligned_alloc(BLOCK_64, size);
+INTERFACE_IMPL(mem, block) {
+	mem_free,
+	mem_resize
+};
+
+u8* mem_alloc(u32 size) {
+	size = ALIGN_SIZE(SZ);
+	mem_header* header = (mem_header*)aligned_alloc(DEFAULT_ALIGNMENT, size);
+	header->base = (void*)header;
+	header->vtable = interface_impl(mem, block);
+	header->offset = sizeof(mem_header);
+	header->size = size;
+	return (u8*)header + sizeof(mem_header);
 }
 
-void arena_init(mem_arena* arena, u32 size, u32 blocksz)
-{
-	vector_init(u8)(&arena->base, jolly_alloc(size * blocksz), size);
-	arena->base.size = blocksz;
+u8* mem_resize(u8* mem, u32 size) {
+	mem_header* header = mem_getheader(mem);
 
-	u8* buf = jolly_alloc((BLOCK_128 - 1) * sizeof(mem_block));
-	vector_init(mem_block)(&arena->heapgc, buf, BLOCK_128 - 1);
-	arena->heapgc.size = 1;
+	// TODO: investigae whether realloc reliably returns the same address in this case
+	if (size < header->size)
+		return mem;
 
-	heapgc_initalize(arena->heapgc.data, BLOCK_128 - 1);
-	arena->free = { arena, 0, size * blocksz };
+	u8* tmp = mem_alloc(size);
+	mem_cpy(tmp, mem);
+	mem_free(mem);
+	return tmp;
 }
 
-void arena_destroy(mem_arena* arena)
-{
-	vector_destroy(u8)(&arena->base);
-	vector_destroy(mem_block)(&arena->heapgc);
+void mem_free(u8* mem) {
+	mem_header* header = mem_getheader(mem);
+	free(header->base);
+}
+
+u64 mem_size(u8* mem) {
+	mem_header* header = mem_getheader(mem);
+	return header->size;
+}
+
+void mem_cpy(u8* dst, u8* src) {
+	mem_header* dstheader = mem_getheader(dst);
+	mem_header* srcheader = mem_getheader(src);
+	u32 count = (dstheader->size < srcheader->size ? dstheader->size : srcheader->size) / BLOCK_32;
+
+	for (u32 i = 0; i < count; i++) {
+		__m256i tmp = _mm256_load_si256((__m256i*)src);
+		_mm256_store_si256((__m256i*)dst, tmp);
+		dst += BLOCK_32;
+		src += BLOCK_32;
+	}
+}
+
+void mem_set(u8* dst, u32 val) {
+	mem_header* header = mem_getheader(dst);
+	u32 count = header->size / BLOCK_32;
+	const __m256i tmp = _mm256_set1_epi32(val);
+
+	for (u32 i = 0; i < count; i++) {
+		_mm256_store_si256((__m256i*)dst, tmp);
+		dst += BLOCK_32;
+	}
+}
+
+mem_header* mem_getheader(u8* mem) {
+	return (mem_header*)(mem - sizeof(mem_header));
+}
+
+u8* mem_vresize(u8* mem, u32 size) {
+	mem_header* header = mem_getheader(mem);
+	return header->vdispatch(vresize)(mem, size);
+}
+
+u8* mem_vfree(u8* mem) {
+	mem_header* header = mem_getheader(mem);
+	header->vdispatch(vfree)(mem);
+}
+
+void arena_init(mem_arena* arena) {
+	mem_header* root = mem_alloc(BLOCK_4096);
+	*root = { (u8*)root, interface_impl(mem, arena), sizeof(mem_header), BLOCK_4096 - sizeof(mem_header) };
+	u32* magic = (u32*)((u8*)root + sizeof(mem_header));
+	*magic = MAGIC;
+	u32 default_size = 8;
+	vector_init(u8*)(&arena->blocks, mem_alloc(default_size * sizeof(u8*)));
+	vector_add(u8*)(&arena->blocks, root->base);
+	rbtree_init(mem_header)(&arena->free, &root);
+}
+
+void arena_destroy(mem_arena* arena) {
+	rbtree_destroy(&arena->free);
+	vector_destroy(&arena->blocks);
 	*arena = {};
 }
 
-mem_block arena_alloc(mem_arena* arena, u32 count)
-{
-	if (arena->free.size < count * arena->base.size)
-		arena_resize(arena, arena->size * 2);
+u8* arena_alloc(mem_arena* arena, u32 size) {
+	size = ALIGN_SIZE(size + sizeof(mem_header));
+	assert(size < BLOCK_4096); // maximum size limit
+	mem_header cmp = { NULL, NULL, 0, size };
+	u32 h = rbtree_best(mem_header*)(&arena->free, &cmp);
+	mem_header* free = *rbtree_at(mem_header)(&arena->free, h);
 
-	mem_block block = { &arena->base, arena->free.handle, count * arena->base.size };
-	free->handle += count;
-	free->size -= count * arena->base.size;
-}
-
-void arena_realloc(mem_block* block, u32 count)
-{
-	mem_arena* arena = (mem_arena*)block->base;
-	u8* base = MEM_DATA(block);
-	mem_block* free = &arena->free;
-
-	u32 extra = count * arena->base.size - block->size;
-	if (base + block->size == MEM_DATA(free) && free->size > extra)
-	{
-		block->size += extra;
-		free->handle += extra / arena->base.size;
-		free->size -= extra;
-		return;
+	if (free->size < size) {
+		arena_resize(arena, arena->blocks.size + 1);
+		h = rbtree_best(mem_header)(&arena->free, &cmp);
+		free = rbtree_at(mem_header)(&arena->free, h);
 	}
 
-	// not enough space adjacent, reallocate
-	mem_block tmp = arena_alloc(arena, count);
-	u32 count = block->size / arena->base.blocksz;
-	vector(u8) dst = { MEM_DATA(tmp), sizeof(mem_block), count };
-	vector(u8) src = { MEM_DATA(block), sizeof(mem_block), count };
-	switch (arena->base.blocksz)
-	{
-		case BLOCK_16:
-			vector_cpy16(&dst, &src);
-			break;
-		default:
-			vector_cpy32(&dst, &src);
-			break;
+	rbtree_delete(&arena->free, h);
+	if (size + sizeof(mem_header) < free->size) {
+		mem_header* tmp = (u8*)free + size;
+		*tmp = { free->base, interface_impl(mem, arena), free->offset + size, free->size - size - sizeof(mem_header) };
+		rbtree_add(mem_header*)(&arena->free, &tmp);
+		free->size -= tmp->size;
 	}
 
-	arena_free(block);
-	*block = tmp;
+	u32* block = free + sizeof(mem_header);
+	*block = 0;
+	return block;
 }
 
-void arena_free(mem_block* block)
-{
-	mem_arena* arena = (mem_arena*)block->base;
-	vector(mem_block)* gc = &arena->heapgc;
-	vector_add(mem_block)(gc, block);
-
-	sort_params params = { { (u8*)gc->data, sizeof(mem_block), gc->size },
-		&NULL_MEM_BLOCK, mem_block_cmp, mem_block_swap, 0, 0, 0 };
-	heap_add(&params);
-
-	*block = {};
+u8* arena_realloc(mem_arena* arena, u8* block, u32 size) {
+	// we could probably see if there's space adjacent but it involves a tree lookup which might be slower
+	u8* new = arena_alloc(arena, size);
+	mem_cpy(new, block);
+	rbtree_add(mem_header*)(&arena->free, &mem_getheader(block));
+	return new;
 }
 
-void arena_resize(mem_arena* arena, u32 size)
-{
-	vector(u8) dst = { jolly_alloc(size * arena->base.size), arena->base.size, size };
-	vector(u8) src = { arena->base.data, arena->base.size, arena->base.reserve };
+void arena_free(mem_arena* arena, u8* block) {
+	*block = MAGIC;
+	rbtree_add(mem_header*)(&arena->free, &mem_getheader(block));
+}
 
-	switch (arena->base.blocksz)
-	{
-		case BLOCK_16:
-			vec_cpy16(&dst, &src);
-			break;
-		default:
-			vec_cpy32(&dst, &src);
-			break;
+void arena_resize(mem_arena* arena, u32 size) {
+	for (u32 i = arena->blocks.size; i < size; i++) {
+		mem_header* block = mem_alloc(BLOCK_4096);
+		*block = { (u8*)root, interface_impl(mem, arena), sizeof(mem_header), BLOCK_4096 - sizeof(mem_header) };
+		u32* magic = (u32*)((u8*)block + sizeof(mem_header));
+		*magic = MAGIC;
+		vector_add(u8*)(&arena->blocks, block->base);
+		rbtree_add(mem_header*)(&arena->free, &block);
 	}
-
-	arena_free(&arena->free);
-	arena->free = { &arena->base, arena->base.reserve, (size - arena->base.reserve) * arena->base.size };
-
-	free(arena->base.data);
-	arena->base.data = dst.data;
-	arena->base.reserve = size;
 }
 
-void arena_gc(mem_arena* arena)
-{
-	arena_free(arena->free);
-	u32 offset = arena->heapgc.size % 2 ? 3 : 2;
-	u32 last = (arena->heapgc.size - offset) / 2;
-	vector(mem_block)* gc = &arena->heapgc;
-	sort_params params = { { (u8*)gc->data, sizeof(mem_block), gc->size },
-		&NULL_MEM_BLOCK, mem_block_cmp, mem_block_swap, 0, 0, 0 };
+void arena_gc(mem_arena* arena) {
+	const u32 MAX_POS = 64;
+	const MM256 INDICES = { 0 * 32, 1 * 32, 2 * 32, 3 * 32, 4 * 32, 5 * 32, 6 * 32, 7 * 32 };
 
-	u32 i = 0;
-	mem_block* largest = vector_at(mem_block)(gc, 0);
-	while (i < last)
-	{
-		mem_block* root = vector_at(mem_block)(gc, i);
-		mem_block* left = vector_at(mem_block)(gc, 2 * i + 1);
-		mem_block* right = vector_at(mem_block)(gc, 2 * i + 2);
+	u64 mem[MAX_POS];
+	vector(u64) pos = { mem, 0, 64 };
+	u32 magic = MAGIC;
 
-		largest = largest->size < root->size ? root : largest;
-		u32 next = root->handle + root->size / arena->base.size;
-		mem_block* adjacent = next == left->handle ? left : (next == right->handle ? right : NULL);
+	for (u32 i = 0; i < arena->blocks.size; i++) {
+		u8* block = vector_at(&arena->blocks, i);
 
-		if (adjacent)
-		{
-			adjacent->handle = root->handle;
-			adjacent->size += root->size;
-			params.data.reserve = gc->size;
-			heap_rm(&params);
-			vector_rm(mem_block)(gc);
-			last -= gc->size % 2 == 0;
+		u8* chunk = block;
+		__m256i cmp = _mm256_set1_epi32(magic);
+		__m256i indices = _mm256_load_si256((__m256i*)INDICES);
+		for (u32 j = 0; j < BLOCK_4096/BLOCK_256; j++) {
+			__m256i x = _mm256_load_si256((__m256i*)chunk);
+			__m256i mask = _mm256_cmpeq_epi32(x, cmp);
+
+			__m256i y = _mm256_set1_epi32(j * BLOCK_256);
+			y = _mm256_add_epi32(y, indices);
+
+			u32 position[8] = {};
+			_mm256_maskstore_epi32(&position, mask, y);
+			for (u32 k = 0; k < 8; k++) {
+				if (position[k] == 0) continue;
+				u32 index = i << 32 | position[k];
+				vector_add(u64)(&pos, &index);
+			}
 		}
 
-		i += adjacent == NULL;
-	}
+		u32 block = (u32)(*vector_at(u64)(&pos, 0) >> 32);
+		u32 offset = (u32)(*vector_at(u64)(&pos, 0) & U32_MAX);
+		mem_header* header = mem_getheader(*vector_at(u8*)(&arena->blocks, block) + offset);
+		u32 flush = false;
+		for (u32 i = 1; i < pos.size; i++) {
+			block = (u32)(*vector_at(u64)(&pos, i) >> 32);
+			offset = (u32)(*vector_at(u64)(&pos, i) & U32_MAX);
+			mem_header* tmp = mem_getheader(*vector_at(u8*)(&arena->blocks, block) + offset);
 
-	arena->free = *largest;
-	heap_del(params, largest - vector_at(mem_block)(gc, 0));
-	vector_rm(mem_block)(gc);
+			if (header->offset + header->size == tmp->offset) {
+				*(u32*)((u8*)tmp + sizeof(mem_header)) = 0;
+				h = rbtree_find(mem_header*)(&arena->free, &tmp);
+				rbtree_del(&arena->free, h);
+				header->size += tmp->size;
+				flush = true;
+			} else {
+				rbtree_add(mem_header*)(&arena->free, &header);
+				header = tmp;
+				flush = false;
+			}
+		}
+
+		if (flush) rbtree_add(mem_header*)(&arena->free, &header);
+		pos.size = 0;
+	}
 }
 
-void pool_init(mem_pool* pool, u32 size, u32 blocksz)
-{
-	vector_init(u8)(&pool->base, jolly_alloc(size * blocksz), size);
-	pool->base.size = blocksz;
+void pool_init(mem_pool* pool, u32 size, u32 blocksz) {
+	vector_init(u8)(&pool->base, jolly_alloc(size * blocksz));
+	pool->blocksz = blocksz;
 	pool->free = 0;
 
-	u32* block = (u32*)pool->base.data;
-	for (u32 i = 1; i < size; i++)
-	{
+	u32* block = (u32*)vector_at(u8)(pool->data, 0);
+	for (u32 i = 1; i < size; i++) {
 		*block = i;
-		block += blocksz;
+		block += blocksz / sizeof(u32);
 	}
 
 	*block = U32_MAX;
 }
 
-void pool_destroy(mem_pool* pool)
-{
-	vector_destroy(u8)(&pool->base);
+void pool_destroy(mem_pool* pool) {
+	vector_destroy(&pool->base);
 	pool->free = U32_MAX;
 }
 
-void pool_resize(mem_pool* pool, u32 size)
-{
-	vector(u8) dst = { jolly_alloc(size * pool->base.size), pool->base.size, size };
-	vector(u8) src = { pool->base.data, pool->base.size, pool->base.reserve };
+void pool_resize(mem_pool* pool, u32 size) {
+	u64 reserve = mem_size(pool->base.data) & VECTOR_RESERVE_MASK;
+	vector_resize(pool->base, size);
 
-	switch(pool->base.size)
-	{
-		case BLOCK_16:
-			vec_cpy16(&dst, &src);
-			break;
-		default:
-			vec_cpy32(&dst, &src);
-			break;
-	}
-
-	u32* block = (u32*)vector_at(u8)(dst, pool->base.reserve * pool->base.size);
+	u32* block = (u32*)pool_at(pool, reserve * pool->blocksz);
 	*block = pool->free;
-	block += pool->base.size / sizeof(u32);
-	for (u32 i = pool->base.reserve; i < size - 1; i++)
-	{
+	block += pool->blocksz / sizeof(u32);
+	for (u32 i = reserve; i < size - 1; i++) {
 		*block = i;
-		block += pool->base.size / sizeof(u32);
+		block += pool->blocksz / sizeof(u32);
 	}
 
 	pool->free = size - 1;
-
-	free(pool->base.data);
-	pool->base.data = dst.data;
-	pool->base.reserve = size;
 }
 
-mem_block pool_alloc(mem_pool* pool)
-{
+u8* pool_at(mem_pool* pool, u32 handle) {
+	return vector_at(u8)(pool->base, handle * pool->blocksz);
+}
+
+u32 pool_alloc(mem_pool* pool) {
 	if (pool->free == U32_MAX)
 		pool_resize(pool->base.reserve * 2);
 
-	mem_block mem = { &pool->base, pool->free, pool->base.size };
-	pool->free = *(u32*)MEM_DATA(&mem);
-	return mem;
+	u32 tmp = pool->free;
+	pool->free = *(u32*)pool_at(tmp);
+	return tmp;
 }
 
-void pool_free(mem_block* mem)
-{
-	mem_pool* pool = (mem_pool*)mem->base;
-	u32* node = (u32*)MEM_DATA(&mem);
-	u32 tmp = mem->handle;
-	*node = pool->free;
-	pool->free = tmp;
+void pool_free(mem_pool* pool, u32 handle) {
+	*(u32*)pool_at(pool, handle) = pool->free;
+	pool->free = handle;
 }
 
-static void list_initblock(mem_list* list, u32 index)
-{
+static void list_initblock(mem_list* list, u32 index) {
 	baseptr* first = vector_at(baseptr)(&list->blocks, 0);
-	u32 size = first->reserve;
-	u32 blocksz = first->size;
+	const u32 size = BLOCK_64;
 
 	baseptr* block = vector_at(baseptr)(&list->blocks, index);
-	vector_init(baseptr)(block, jolly_alloc(size * blocksz), size);
-	block->size = blocksz;
+	vector_init(baseptr)(block, mem_alloc(size * blocksz));
 
 	u8* ptr = block->data;
-	for (u32 i = 1; i < size; i++)
-	{
-		u64* next = (u64*)ptr;
-		*next = ((u64)index << 32) | ((u64)i);
-		ptr += blocksz;
+	for (u32 i = 1; i < size; i++) {
+		u32* next = (u32*)ptr;
+		*next = (index << 16) | i;
+		ptr += list->blocksz;
 	}
 
-	*(u64*)ptr = list->free;
-	list->free = *(u64*)block->data;
+	*(u32*)ptr = list->free;
+	list->free = *(u32*)block->data;
 }
 
-void list_init(mem_list* list, u32 size, u32 blocksz)
-{
+void list_init(mem_list* list, u32 blocksz, u32 flags) {
 	const default_size = 8;
-	vector_init(baseptr)(&list->blocks, jolly_alloc(default_size * sizeof(baseptr)), default_size);
-	list->blocks.size = 1;
-	list->free = U64_MAX;
+	blocksz += sizeof(mem_header) * (flags & ALLOC_VTABLE) == ALLOC_VTABLE;
+	vector_init(baseptr)(&list->blocks, mem_alloc(default_size * sizeof(baseptr)));
+	list->free = U32_MAX;
+	list->blocksz = blocksz;
 
-	baseptr* first = vector_at(baseptr)(&list->blocks, 0);
-	first->size = blocksz;
-	first->reserve = size;
 	list_initblock(list, 0);
 }
 
-void list_destroy(mem_list* list)
-{
-	for (u32 i = 0; i < list->blocks.size; i++)
-	{
+void list_destroy(mem_list* list) {
+	for (u32 i = 0; i < list->blocks.size; i++) {
 		baseptr* block = vector_at(baseptr)(&list->blocks, i);
-		vector_destroy(baseptr)(block);
+		vector_destroy(block);
 	}
 
 	vector_destroy(&list->blocks);
 	*list = {};
 }
 
-void list_resize(mem_list* list, u32 size)
-{
+void list_resize(mem_list* list, u32 size) {
 	vector(baseptr)* blocks = &list->blocks;
 	if (blocks->reserve < size)
-		vector_resize(baseptr)(blocks, size);
+		vector_resize(blocks, size);
 
 	for (u32 i = blocks->size; i < size; i++)
 		list_initblock(list, i);
 
-	blocks->size = size < blocks->size ? blocks-i>size : size;
+	blocks->size = size < blocks->size ? blocks->size : size;
 }
 
-mem_block list_alloc(mem_list* list)
-{
+u8* list_alloc(mem_list* list) {
 	if (list->free == U64_MAX)
 		list_resize(list, list->blocks.size + 1);
 
-	const u64 mask = (u64)U32_MAX;
-	u32 index = (u32)(list->free >> 32);
-	u32 offset = (u32)(list->free & mask);
-
-	baseptr* block = vector_at(baseptr)(&list->blocks, index);
-	u64* ptr = (u64*)vector_at(u8)(block, offset * block->size);
+	u32* ptr = (u32*)list_at(list, list->free);
+	u32 tmp = list->free;
 	list->free = *ptr;
 
-	return { block, offset, block->size };
+	mem_header* header = (mem_header*)ptr;
+	header->base = (void*)list;
+	header->vtable = interface_impl(mem, list);
+	header->offset = tmp;
+	header->size = list->blocksz;
+
+	return (u8*)header + sizeof(mem_header);
 }
 
-void list_free(mem_list* list, mem_block* block)
-{
-	u64* ptr = (u64*)MEM_DATA(block);
+void list_free(mem_list* list, u8* block) {
+	mem_header* header = mem_getheader(block);
+	u64 tmp = header->offset;
+
+	u32* ptr = (u32*)header;
 	*ptr = list->free;
-
-	u64 index = block->base - vector_at(baseptr)(&list->blocks, 0);
-	list->free = index << 32 | ((u64)block->handle);
+	list->free = tmp;
 }
 
-#define VECTOR_DEFINE_CPY(name, block, offset, load, store) \
-void name(vector(u8)* dst, vector(u8)* src) {\
-	u32 count = dst->reserve < src->reserve ? dst->reserve : src->reserve; \
-	u8* sptr = src->data; \
-	u8* dptr = dst->data; \
-	for (u32 i = 0; i < count; i++) {\
-		block tmp = load((block*)sptr); \
-		store((block*)d, tmp); \
-		dst += offset; \
-		src += offset; \
-	} \
+u64 list_halloc(mem_list* list) {
+	if (list->free == U64_MAX)
+		list_resize(list, list->blocks.size + 1);
+
+	u32* ptr = (u32*)list_at(list, list->free);
+	u64 tmp = list->free;
+	list->free = *ptr;
+
+	return tmp;
 }
 
-VECTOR_DEFINE_CPY(vector_cpy16, __m128i, BLOCK_16, _mm_load_si128, _mm_store_si128);
-VECTOR_DEFINE_CPY(vector_cpy32, __m256i, BLOCK_32, _mm256_load_si256, _mm256_store_si256);
-VECTOR_DEFINE_CPY(vector_cpy16u, __m128i, BLOCK_16, _mm_loadu_si128, _mm_storeu_si128);
-VECTOR_DEFINE_CPY(vector_cpy32u, __m256i, BLOCK_32, _mm256_loadu_si256, _mm256_storeu_si256);
-
-#define VECTOR_DEFINE_SET(name, block, offset, set, store) \
-void name(vector(u8)* dst, u32 val) { \
-	block tmp = set(val); \
-	u8* dptr = dst->data; \
-	for (u32 i = 0; i < dst->reserve; i++) { \
-		store((block*)dptr, tmp); \
-		dptr += offset; \
-	} \
+void list_hfree(mem_list* list, u64 handle) {
+	u64* ptr = (u64*)list_at(list, handle);
+	*ptr = list->free;
+	list->free = handle;
 }
 
-VECTOR_DEFINE_SET(vector_set16, __m128i, BLOCK_16, _mm_set1_epi32, _mm_store_si128);
-VECTOR_DEFINE_SET(vector_set32, __m256i, BLOCK_32, _mm256_set1_epi32, _mm256_store_si256);
+u8* list_at(mem_list* list, u64 handle) {
+	const u32 mask = U16_MAX;
+	u32 index = handle >> 16;
+	u32 offset = handle & mask;
 
-#define VECTOR_DEFINE_CMP(name, block, offset, set, load, xor, test) \
-void name(vector(u8)* dst, vector(u8)* src) { \
-	block one = set(0XFF); \
-	u32 count = dst->reserve < src->reserve ? dst->reserve : src->reserve; \
-	u8* sptr = src->data; \
-	u8* dptr = dst->data; \
-	for (u32 i = 0; i < count; i++) { \
-		block x = load((block*)sptr); \
-		block y = load((block*)dptr); \
-		block xor = xor(x, y); \
-		if (!test(xor, one)) return 0; \
-		sptr += offset; \
-		dptr += offset; \
-	} \
-	return 1; \
-}
-
-VECTOR_DEFINE_CMP(vector_cmp16, __m128i, BLOCK_16, _mm_set1_epi8, _mm_load_si128, _mm_xor_si128, _mm_testz_si128);
-VECTOR_DEFINE_CMP(vector_cmp32, __m256i, BLOCK_32, _mm256_set1_epi8, _mm256_load_si256, _mm256_xor_si256, _mm256_textz_si256);
-VECTOR_DEFINE_CMP(vector_cmp16, __m128i, BLOCK_16, _mm_set1_epi8, _mm_loadu_si128, _mm_xor_si128, _mm_testz_si128);
-VECTOR_DEFINE_CMP(vector_cmp32, __m256i, BLOCK_32, _mm256_set1_epi8, _mm256_loadu_si256, _mm256_xor_si256, _mm256_textz_si256);
-
-static void mem_block_cmp(u8* a, u8* b)
-{
-	mem_block* mema = (mem_block*)a;
-	mem_block* memb = (mem_block*)b;
-	return mema->handle - memb->handle;
-}
-
-static void mem_block_swap(u8* a, u8* b)
-{
-	__m128i x = _mm_load_si128((__m128i*)a);
-	__m128i y = _mm_load_si128((__m128i*)b);
-
-	_mm_store_si128((__m128i*)a, y);
-	_mm_store_si128((__m128i*)b, x);
-}
-
-static void heapgc_initialize(u8* data, u32 size)
-{
-	__m128i fill = _mm_loadu_si128((__m128i*)&NULL_MEM_BLOCK);
-	for (u32 i = 0; i < size; i++)
-	{
-		_mm_store_si128((__m128i*)data, fill);
-		data += BLOCK_16;
-	}
-}
-
-static u8* heapgc_allocate(u32 size)
-{
-	u8* buf = (u8*)alligned_alloc(64, size);
-	heapgc_initialize(buf, size / BLOCK_16);
-	return buf;
-}
-
-#define VEC_ALLOC(size) heapgc_allocate(size)
-#define VEC_CPY(dst, src) vector_cpy32(dst, src)
-VECTOR_DEFINE_FN(mem_block, AT, RESIZE);
-
-#define VEC_ALLOC(size) (u8*)aligned_alloc(64, size)
-VECTOR_DEFINE_FN(vector_u8, AT, RM, RESIZE);
-
-void vector_add_mem_block(vector(mem_block)* v, mem_block* data)
-{
-    if (v->reserve <= v->size)
-        vector_resize(TYPE)(v, v->reserve * 2 + 1);
-	__m128i tmp = _mm_load_si128((__m128i*)src);
-	_mm_store_si128((__m128i*)dst, tmp);
-	v->size++;
-}
-
-mem_block* vector_rm_mem_block(vector(mem_block)* v)
-{
-	v->size--;
-	__m128i fill = _mm_loadu_si128((__m128i*)&NULL_MEM_BLOCK);
-	_mm_store_si128((__m128i*)vector_at(memory_block)(v, v->size), fill);
-	return &NULL_MEM_BLOCK;
+	baseptr* block = vector_at(baseptr)(&list->blocks, index);
+	return vector_at(u8)(block, offset * block->size);
 }

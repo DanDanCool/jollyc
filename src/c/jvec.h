@@ -3,213 +3,148 @@
 #include "jtype.h"
 #include "jmacro.h"
 
-// consider generic "ptr" types to allow memory from allocators to mesh better
-
-#define vector(TYPE) vector_##TYPE
+#define vector(TYPE) vector
 #define vector_init(TYPE) vector_init_##TYPE
-#define vector_destroy(TYPE) vector_destroy_##TYPE
+void vector_destroy(vector* v);
 #define vector_at(TYPE) vector_at_##TYPE
-#define vector_load(TYPE) vector_load_##TYPE
-#define vector_store(TYPE) vector_store_##TYPE
+#define vector_get(TYPE) vector_get_##TYPE
+#define vector_set(TYPE) vector_set_##TYPE
 #define vector_add(TYPE) vector_add_##TYPE
-#define vector_rm(TYPE) vector_rm_##TYPE
-#define vector_resize(TYPE) vector_resize_##TYPE
+#define vector_del(TYPE) vector_rm_##TYPE
+void vector_resize(vector* v, u32 size);
 
-#define queue(TYPE) queue_##TYPE
+#define queue(TYPE) queue
 #define queue_init(TYPE) queue_init_##TYPE
 #define queue_destroy(TYPE) queue_destroy_##TYPE
 #define queue_at(TYPE) queue_at_##TYPE
-#define queue_push(TYPE) queue_push_##TYPE
-#define queue_pop(TYPE) queue_pop_##TYPE
-
-#define VECTOR_DECLARE(TYPE)\
-typedef struct vector(TYPE) vector(TYPE)
+#define queue_add(TYPE) queue_add_##TYPE
+#define queue_del(TYPE) queue_del_##TYPE
 
 #define VECTOR_DECLARE_INIT(TYPE) \
-void vector_init(TYPE)(vector(TYPE)* v, u8* data, u32 size)
-
-#define VECTOR_DECLARE_DESTROY(TYPE) \
-void vector_destroy(TYPE)(vector(TYPE)* v)
+void vector_init(TYPE)(vector* v, u8* data)
 
 #define VECTOR_DECLARE_AT(TYPE) \
-TYPE* vector_at(TYPE)(vector(TYPE)* v, u32 index)
+TYPE* vector_at(TYPE)(vector* v, u32 index)
 
-#define VECTOR_DECLARE_LOAD(TYPE) \
-void vector_load(TYPE)(vector(TYPE)* v, u32 index, TYPE* out)
+#define VECTOR_DECLARE_GET(TYPE) \
+void vector_get(TYPE)(vector* v, u32 index, TYPE* out)
 
-#define VECTOR_DECLARE_STORE(TYPE) \
-void vector_store(TYPE)(vector(TYPE)* v, u32 index, TYPE* in)
+#define VECTOR_DECLARE_SET(TYPE) \
+void vector_set(TYPE)(vector* v, u32 index, TYPE* in)
 
 #define VECTOR_DECLARE_ADD(TYPE) \
-void vector_add(TYPE)(vector(TYPE)* v, TYPE* data)
+void vector_add(TYPE)(vector* v, TYPE* data)
 
-#define VECTOR_DECLARE_RM(TYPE) \
-TYPE* vector_rm(TYPE)(vector(TYPE)* v)
-
-#define VECTOR_DECLARE_RESIZE(TYPE) \
-void vector_resize(TYPE)(vector(TYPE)* v, u32 size)
-
-#define VECTOR_DECLARE_FN__() VECTOR_DECLARE_FN_
-
-#define VECTOR_DECLARE_FN_(TYPE, arg, ...) \
-VECTOR_DECLARE_##arg(TYPE); \
-__VA_OPT__(VECTOR_DECLARE_FN__ PAREN (TYPE, __VA_ARGS__))
+#define VECTOR_DECLARE_DEL(TYPE) \
+TYPE* vector_del(TYPE)(vector* v, u32 index)
 
 #define VECTOR_DECLARE_FN(TYPE, ...) \
-__VA_OPT__(EXPAND(VECTOR_DECLARE_FN_(TYPE, __VA_ARGS__)))
-
-#define QUEUE_DECLARE(TYPE) \
-typedef struct queue(TYPE) queue(TYPE)
+DECLARE_FN(VECTOR_DECLARE, TYPE, __VA_ARGS__)
 
 #define QUEUE_DECLARE_INIT(TYPE) \
-void queue_init(TYPE)(queue(TYPE)* q, u8* data, u32 size)
-
-#define QUEUE_DECLARE_DESTROY(TYPE) \
-void queue_destroy(TYPE)(queue(TYPE)* q)
+void queue_init(TYPE)(queue* q, u8* data, u32 size)
 
 #define QUEUE_DECLARE_AT(TYPE) \
-TYPE* queue_at(TYPE)(queue(TYPE)* q, TYPE* data)
+TYPE* queue_at(TYPE)(queue* q, TYPE* data)
 
-#define QUEUE_DECLARE_PUSH(TYPE) \
-void queue_push(TYPE)(queue(TYPE)* q, TYPE* data)
+#define QUEUE_DECLARE_ADD(TYPE) \
+void queue_add(TYPE)(queue* q, TYPE* data)
 
-#define QUEUE_DECLARE_POP(TYPE) \
-TYPE* queue_pop(TYPE)(queue(TYPE)* q, TYPE* data)
-
-#define QUEUE_DECLARE_FN__() QUEUE_DECLARE_FN_
-
-#define QUEUE_DECLARE_FN_(TYPE, arg, ...) \
-QUEUE_DECLARE_##arg(TYPE); \
-__VA_OPT__(QUEUE_DECLARE_FN__ PAREN (TYPE, __VA_ARGS__))
+#define QUEUE_DECLARE_DEL(TYPE) \
+TYPE* queue_del(TYPE)(queue* q, TYPE* data)
 
 #define QUEUE_DECLARE_FN(TYPE, ...) \
-__VA_OPT__(EXPAND(QUEUE_DECLARE_FN_(TYPE, __VA_ARGS__)))
+DECLARE_FN(QUEUE_DECLARE, TYPE, __VA_ARGS__)
 
-#define VECTOR_DEFINE(TYPE) \
-struct vector_##TYPE {    \
-    TYPE* data;  \
-    u32 size;    \
-    u32 reserve; \
+typedef struct vector vector;
+struct vector {
+    u8* data;
+	u32 size;
+	u32 reserve;
 }
 
 #define VECTOR_DEFINE_INIT(TYPE) \
-void vector_init(TYPE)(vector(TYPE)* v, u8* data, u32 size) { \
-	*v = {}; \
-	v->data = (TYPE*)data; \
-	v->reserve = size; \
-}
-
-#define VECTOR_DEFINE_DESTROY(TYPE) \
-void vector_destroy(TYPE)(vector(TYPE)* v) { \
-	free(v->data); \
-	*v = {}; \
+void vector_init(TYPE)(vector* v, u8* data) { \
+	v->data = data; \
+	mem_header* header = mem_getheader(data); \
+	v->reserve = header->size / sizeof(TYPE); \
+	v->size = 0; \
 }
 
 #define VECTOR_DEFINE_AT(TYPE) \
-TYPE* vector_at(TYPE)(vector(TYPE)* v, u32 index) { \
-	return v->data + index; \
+TYPE* vector_at(TYPE)(vector* v, u32 index) { \
+	return (TYPE*)v->data + index; \
 }
 
-#define VECTOR_DEFINE_LOAD(TYPE) \
-void vector_load(TYPE)(vector(TYPE)* v, u32 index, TYPE* out) { \
-	VEC_MEMCPY((u8*)out, (u8*)vector_at(TYPE)(v, index), sizeof(TYPE)); \
+#define VECTOR_DEFINE_GET(TYPE) \
+void vector_get(TYPE)(vector* v, u32 index, TYPE* out) { \
+	copy(TYPE)(out, vector_at(TYPE)(v, index)); \
 }
 
-#define VECTOR_DEFINE_STORE(TYPE) \
-void vector_store(TYPE)(vector(TYPE)* v, u32 index, TYPE* in) { \
-	VEC_MEMCPY((u8*)vector_at(TYPE)(v, index), (u8*)in, sizeof(TYPE)); \
+#define VECTOR_DEFINE_SET(TYPE) \
+void vector_set(TYPE)(vector* v, u32 index, TYPE* in) { \
+	copy(TYPE)(vector_at(TYPE)(v, index), out); \
 }
 
-// require definition of VEC_MEMCOPY, vector_resize
 #define VECTOR_DEFINE_ADD(TYPE) \
-void vector_add(TYPE)(vector(TYPE)* v, TYPE* data) {\
+void vector_add(TYPE)(vector* v, TYPE* data) {\
     if (v->reserve <= v->size) \
-        vector_resize(TYPE)(v, v->size * 2); \
-	vector_store(TYPE)(v, v->size, data); \
+        vector_resize(TYPE)(v, size * 2); \
+	vector_set(TYPE)(v, v->size, data); \
 	v->size++; \
 }
 
-#define VECTOR_DEFINE_RM(TYPE) \
-TYPE* vector_rm(TYPE)(vector(TYPE)* v) { \
+#define VECTOR_DEFINE_DEL(TYPE) \
+TYPE* vector_del(TYPE)(vector* v, u32 index) { \
 	v->size--; \
-	return vec_at(TYPE)(v, v->size); \
+	TYPE tmp; \
+	vector_get(v, index, &tmp); \
+	vector_set(v, index, vector_at(TYPE)(v, v->size)); \
+	vector_set(v, v->size, &tmp); \
 }
 
-// require definition of VEC_ALLOC and VEC_CPY
-// always copies data
-#define VECTOR_DEFINE_RESIZE(TYPE) \
-void vector_resize(TYPE)(vector(TYPE)* v, u32 size) {\
-	vector(u8) dst = { VEC_ALLOC(size * sizeof(TYPE)), sizeof(TYPE), size }; \
-	vector(u8) src = { (u8*)v->data, sizeof(TYPE), v->size }; \
-	VEC_CPY(&dst, &src); \
-	free(v->data); \
-	v->data = (TYPE*)dst.data; \
-	v->reserve = size; \
-}
+#define VECTOR_DEFINE_FN(TYPE, ...) \
+DECLARE_FN(VECTOR_DEFINE, TYPE, __VA_ARGS__)
 
-#define VECTOR_DECLARE_FN__() VECTOR_DECLARE_FN_
-
-#define VECTOR_DECLARE_FN_(TYPE, arg, ...) \
-VECTOR_DECLARE_##arg(TYPE); \
-__VA_OPT__(VECTOR_DECLARE_FN__ PAREN (TYPE, __VA_ARGS__))
-
-#define VECTOR_DECLARE_FN(TYPE, arg, ...) \
-__VA_OPT__(EXPAND(VECTOR_DECLARE_FN_(TYPE, __VA_ARGS__)))
-
-#define QUEUE_DEFINE(TYPE) \
-struct queue_##TYPE { \
-	vector(TYPE) data; \
-	u32 beg; \
-	u32 end; \
+typedef struct queue queue;
+struct queue
+{
+	vector data;
+	u32 beg;
+	u32 end;
 }
 
 #define QUEUE_DEFINE_INIT(TYPE) \
-void queue_init(TYPE)(queue(TYPE)* q, u8* data, u32 size) { \
+void queue_init(TYPE)(queue* q, u8* data) { \
 	*q = {}; \
-	q->data.data = (TYPE*)data; \
-	q->data.reserve = size; \
-}
-
-#define QUEUE_DEFINE_DESTROY(TYPE) \
-void queue_destroy(TYPE)(queue(TYPE)* q) { \
-	vector_destroy(TYPE)(&q->data); \
-	*q = {}; \
+	vector_init(TYPE)(&q->data, data); \
 }
 
 #define QUEUE_DEFINE_AT(TYPE) \
-TYPE* queue_at(TYPE)(queue(TYPE)* q, u32 index) { \
+TYPE* queue_at(TYPE)(queue* q, u32 index) { \
 	return vector_at(TYPE)(&q->data, index); \
 }
 
-// see requirements for vector_add
-#define QUEUE_DEFINE_PUSH(TYPE) \
-void queue_push(TYPE)(queue(TYPE)* q, TYPE* data) { \
+#define QUEUE_DEFINE_ADD(TYPE) \
+void queue_add(TYPE)(queue* q, TYPE* data) { \
 	if (q->data.reserve <= q->data.size) { \
-		vector_resize(TYPE)(&q->data, q->data.size * 2); \
+		vector_resize(&q->data, q->data.size * 2); \
 		q->end = q->data.size; \
 	} \
-	vector_store(TYPE)(&q->data, q->end, data); \
-	q->end = (q->end + 1) % q->data.reserve; \
+	vector_set(TYPE)(&q->data, q->end, data); \
 	q->data.size++; \
 }
 
-// see requirements for vector_rm
-#define QUEUE_DEFINE_POP(TYPE) \
-TYPE* queue_pop(TYPE)(queue(TYPE)* q) { \
+#define QUEUE_DEFINE_DEL(TYPE) \
+TYPE* queue_del(TYPE)(queue* q) { \
 	assert(q->begin <= q->end); \
 	q->data.size--; \
 	u32 tmp = q->begin++; \
 	return queue_at(TYPE)(q, tmp); \
 }
 
-#define QUEUE_DEFINE_FN__() QUEUE_DEFINE_FN_
-
-#define QUEUE_DEFINE_FN_(TYPE, arg, ...) \
-QUEUE_DEFINE_##arg(TYPE); \
-__VA_OPT__(QUEUE_DEFINE_FN__ PAREN (TYPE, __VA_ARGS__))
-
 #define QUEUE_DEFINE_FN(TYPE, ...) \
-__VA_OPT__(EXPAND(QUEUE_DEFINE_FN_(TYPE, __VA_ARGS__)))
+DECLARE_FN(QUEUE_DEFINE, TYPE, __VA_ARGS__)
 
 // -1 if a < b
 // +1 if a > b

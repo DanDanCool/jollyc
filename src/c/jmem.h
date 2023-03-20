@@ -3,15 +3,16 @@
 #include "jtype.h"
 #include "jvec.h"
 
-INTERFACE(mem)
-{
+INTERFACE(mem) {
 	void (*vfree)(u8* ptr);
-	u8* (*vresize)(u8* ptr);
+	u8* (*vresize)(u8* ptr, u32 size);
 };
 
-enum
-{
-	BLOCK_16 = 16,
+INTERFACE_DECLARE(mem, block);
+INTERFACE_DECLARE(mem, arena);
+INTERFACE_DECLARE(mem, list);
+
+enum {
 	BLOCK_32 = 32,
 	BLOCK_64 = 64,
 	BLOCK_128 = 128,
@@ -21,108 +22,90 @@ enum
 	BLOCK_2048 = 2048,
 	BLOCK_4096 = 4096,
 	BLOCK_8192 = 8192,
+
+	DEFAULT_ALIGNMENT = BLOCK_32,
+};
+
+enum
+{
+	ALLOC_VTABLE = 1 << 0,
 };
 
 typedef vector(u8) baseptr;
-typedef struct mem_block mem_block;
 typedef struct mem_arena mem_arena;
 typedef struct mem_pool mem_pool;
 typedef struct mem_list mem_list;
 typedef struct mem_header mem_header;
 
-struct mem_header
-{
-	baseptr* base;
+struct mem_header {
+	void* base;
 	vmem* vtable;
-	u32 size;
-	u32 offset;
+	u64 offset;
+	u64 size;
 };
 
-struct mem_block
-{
-	baseptr* base;
-	u32 handle;
-	u32 size;
-};
+// 32 byte alignment
+u8* mem_alloc(u32 size);
+u8* mem_resize(u8* mem, u32 size);
+void mem_free(u8* mem);
 
-VECTOR_DECLARE(mem_block);
-VECTOR_DEFINE(mem_block);
+u64 mem_size(u8* mem);
+void mem_cpy(u8* dst, u8* src);
+void mem_set(u8* dst, u32 val)
+mem_header* mem_getheader(u8* mem);
 
-// supports dynamically sized allocations
-// continuous buffer of memory
-struct mem_arena
-{
-	baseptr base;
-	vector(mem_block) heapgc;
-	mem_block free;
-};
+u8* mem_vresize(u8* mem, u32 size);
+void mem_vfree(u8* mem);
 
 // fixed size allocations
 // continuous buffer of memory
-struct mem_pool
-{
+struct mem_pool {
 	baseptr base;
+	u32 blocksz;
 	u32 free;
 };
 
-VECTOR_DECLARE(baseptr);
-VECTOR_DEFINE(baseptr);
-
 // fixed sized allocations, eight byte minimum allocations
 // memory not continuous
-struct mem_list
-{
+struct mem_list {
 	vector(baseptr) blocks;
-	u64 free;
+	u32 free;
+	u32 blocksz;
 };
 
-inline u8* MEM_DATA(mem_block* block)
-{
-	baseptr* base = block->base;
-	return vector_at(u8)(base, block->handle * base->size)
-}
+// supports dynamically sized allocations
+struct mem_arena {
+	rbtree(mem_header*) free;
+	vector(u8*) blocks;
+};
 
 // GCC language extension
 #define MEM_GUARD(TYPE, dtor) TYPE __attribute__((cleanup(dtor)))
 
-// force multiple of 64 allocation size
-u8* jolly_alloc(size);
-
-void arena_init(mem_arena* arena, u32 size, u32 blocksz);
+void arena_init(mem_arena* arena);
 void arena_destroy(mem_arena* arena);
 void arena_resize(mem_arena* arena, u32 size);
 void arena_gc(mem_arena* arena);
 
-mem_block arena_alloc(mem_arena* arena, u32 count);
-void arena_realloc(mem_block* block, u32 count);
-void arena_free(mem_block* block);
+u8* arena_alloc(mem_arena* arena, u32 size);
+u8* arena_realloc(mem_arena* arena, u8* block, u32 size);
+void arena_free(mem_arena* arena, u8* block);
 
 void pool_init(mem_pool* pool, u32 size, u32 blocksz);
 void pool_destroy(mem_pool* pool);
 void pool_resize(mem_pool* pool, u32 size);
 
-mem_block pool_alloc(mem_pool* pool);
-void pool_free(mem_block* block);
+u8* pool_at(mem_pool* pool, u32 handle);
+u32 pool_alloc(mem_pool* pool);
+void pool_free(mem_pool* pool, u32 handle);
 
-void list_init(mem_list* list, u32 size, u32 blocksz);
+void list_init(mem_list* list, u32 blocksz, u32 flags);
 void list_destroy(mem_list* list);
 void list_resize(mem_list* list, u32 size);
 
-mem_block list_alloc(mem_list* list);
-void list_free(mem_list* list, mem_block* block);
+u8* list_alloc(mem_list* list);
+void list_free(mem_list* list, u8* block);
 
-void vector_cpy16(vector(u8)* dst, vector(u8)* src);
-void vector_cpy32(vector(u8)* dst, vector(u8)* src);
-
-void vector_set16(vector(u8)* dst, u32 val);
-void vector_set32(vector(u8)* dst, u32 val);
-
-int vector_cmp16(vector(u8)* dst, vector(u8)* src);
-int vector_cmp32(vector(u8)* dst, vector(u8)* src);
-
-// unaligned versions
-void vector_cpy16u(vector(u8)* dst, vector(u8)* src);
-void vector_cpy32u(vector(u8)* dst, vector(u8)* src);
-
-int vector_cmp16u(vector(u8)* dst, vector(u8)* src);
-int vector_cmp32u(vector(u8)* dst, vector(u8)* src);
+u32 list_halloc(mem_list* list);
+void list_hfree(mem_list*, u32 handle);
+u8* list_at(mem_list* list, u32 handle);
