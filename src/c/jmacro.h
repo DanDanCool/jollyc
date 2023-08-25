@@ -1,6 +1,6 @@
 #pragma once
 
-#define MAGIC 'j' << 24 | 'o' << 16 | 11 << 8 | 'y'
+const int MAGIC = 'j' << 24 | 'o' << 16 | 11 << 8 | 'y'
 
 #define MM256 u32 __attribute__((aligned(256)))
 
@@ -48,7 +48,7 @@ typedef interface_##NAME* interface(NAME); \
 struct interface_##NAME
 
 #define INTERFACE_DECLARE(name, impl) \
-extern const interface(interface) interface_impl(name, impl)
+extern const interface(name) interface_impl(name, impl)
 
 #define INTERFACE_IMPL(name, impl) \
 const interface(name) interface_impl(name, impl) =

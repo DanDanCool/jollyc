@@ -26,8 +26,7 @@ enum {
 	DEFAULT_ALIGNMENT = BLOCK_32,
 };
 
-enum
-{
+enum {
 	ALLOC_VTABLE = 1 << 0,
 };
 
@@ -37,10 +36,8 @@ typedef struct mem_pool mem_pool;
 typedef struct mem_list mem_list;
 typedef struct mem_header mem_header;
 
-struct mem_header {
-	void* base;
-	vmem* vtable;
-	u64 offset;
+struct mem_ptr {
+	void* ptr;
 	u64 size;
 };
 
@@ -78,9 +75,6 @@ struct mem_arena {
 	rbtree(mem_header*) free;
 	vector(u8*) blocks;
 };
-
-// GCC language extension
-#define MEM_GUARD(TYPE, dtor) TYPE __attribute__((cleanup(dtor)))
 
 void arena_init(mem_arena* arena);
 void arena_destroy(mem_arena* arena);

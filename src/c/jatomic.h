@@ -20,15 +20,6 @@ void spinlock_signal(_Atomic(u32)* lock, u32 target);
 
 #define atomic(TYPE) atomic_##TYPE
 
-#define atomic_vector(TYPE) atomic_vector_##TYPE
-#define atomic_vector_init(TYPE) atomic_vector_init_##TYPE
-#define atomic_vector_destroy(TYPE) atomic_vector_destroy_##TYPE
-#define atomic_vector_load(TYPE) atomic_vector_load_##TYPE
-#define atomic_vector_store(TYPE) atomic_vector_store_##TYPE
-#define atomic_vector_add(TYPE) atomic_vector_add_##TYPE
-#define atomic_vector_rm(TYPE) atomic_vector_rm_##TYPE
-#define atomic_vector_resize(TYPE) atomic_vector_resize_##TYPE
-
 #define atomic_queue(TYPE) atomic_queue_##TYPE
 #define atomic_queue_init(TYPE) atomic_queue_init_##TYPE
 #define atomic_queue_destroy(TYPE) atomic_queue_destroy_##TYPE
@@ -37,39 +28,6 @@ void spinlock_signal(_Atomic(u32)* lock, u32 target);
 #define atomic_queue_push(TYPE) atomic_queue_push_##TYPE
 #define atomic_queue_pop(TYPE) atomic_queue_pop_##TYPE
 #define atomic_queue_trypop(TYPE) atomic_queue_pop_##TYPE
-
-#define ATOMIC_VECTOR_DECLARE(TYPE)\
-typedef struct atomic_vector(TYPE) atomic_vector(TYPE)
-
-#define ATOMIC_VECTOR_DECLARE_INIT(TYPE) \
-void atomic_vector_init(TYPE)(atomic_vector(TYPE)* v, u8* data, u32 size)
-
-#define ATOMIC_VECTOR_DECLARE_DESTROY(TYPE) \
-void atomic_vector_destroy(TYPE)(atomic_vector(TYPE)* v)
-
-#define ATOMIC_VECTOR_DECLARE_LOAD(TYPE) \
-void atomic_vector_load(TYPE)(atomic_vector(TYPE)* v, u32 index, TYPE* out)
-
-#define ATOMIC_VECTOR_DECLARE_STORE(TYPE) \
-void atomic_vector_store(TYPE)(atomic_vector(TYPE)* v, u32 index, TYPE* in)
-
-#define ATOMIC_VECTOR_DECLARE_ADD(TYPE) \
-void atomic_vector_add(TYPE)(atomic_vector(TYPE)* v, TYPE* data)
-
-#define ATOMIC_VECTOR_DECLARE_RM(TYPE) \
-u32 atomic_vector_rm(TYPE)(atomic_vector(TYPE)* v)
-
-#define ATOMIC_VECTOR_DECLARE_RESIZE(TYPE) \
-void atomic_vector_resize(TYPE)(atomic_vector(TYPE)* v, u32 size)
-
-#define ATOMIC_VECTOR_DECLARE_FN__() ATOMIC_VECTOR_DECLARE_FN_
-
-#define ATOMIC_VECTOR_DECLARE_FN_(TYPE, arg, ...) \
-ATOMIC_VECTOR_DECLARE_##arg(TYPE); \
-__VA_OPT__(ATOMIC_VECTOR_DECLARE_FN__ PAREN (TYPE, __VA_ARGS__))
-
-#define ATOMIC_VECTOR_DECLARE_FN(TYPE, ...) \
-__VA_OPT__(EXPAND(ATOMIC_VECTOR_DECLARE_FN_(TYPE, __VA_ARGS__)))
 
 #define ATOMIC_QUEUE_DECLARE(TYPE) \
 typedef struct atomic_queue(TYPE) atomic_queue(TYPE)
@@ -104,14 +62,6 @@ __VA_OPT__(ATOMIC_QUEUE_DECLARE_FN__ PAREN (TYPE, __VA_ARGS__))
 #define ATOMIC_QUEUE_DECLARE_FN(TYPE, ...) \
 __VA_OPT__(EXPAND(ATOMIC_QUEUE_DECLARE_FN_(TYPE, __VA_ARGS__)))
 
-#define ATOMIC_VECTOR_DEFINE(TYPE) \
-struct atomic_vector_##TYPE {    \
-    _Atomic(TYPE*) data;  \
-    _Atomic(u32) size;    \
-    _Atomic(u32) reserve; \
-	_Atomic(u32) flags;
-}
-
 #define VECTOR_DEFINE_INIT(TYPE) \
 void atomic_vector_init(TYPE)(atomic_vector(TYPE)* v, u8* data, u32 size) { \
 	atomic_init(&v->data, data); \
@@ -129,67 +79,6 @@ void atomic_vector_destroy(TYPE)(atomic_vector(TYPE)* v) { \
 	TYPE* buf = atomic_exchange_explicit(&v->data, NULL, memory_order_relaxed); \
 	free(buf); \
 }
-
-// need VEC_MEMCOPY
-#define ATOMIC_VECTOR_DEFINE_LOAD(TYPE) \
-void atomic_vector_load(TYPE)(atomic_vector(TYPE)* v, u32 index, TYPE* out) { \
-	TYPE* buf = atomic_load_explicit(&v->data, memory_order_acquire); \
-	VEC_MEMCPY((u8*)out, (u8*)(buf + index), sizeof(TYPE)); \
-}
-
-#define ATOMIC_VECTOR_DEFINE_STORE(TYPE) \
-void atomic_vector_store(TYPE)(atomic_vector(TYPE)* v, u32 index, TYPE* in) { \
-	spinlock_nolock(&v->flags, ATOMIC_RESIZE); \
-	TYPE* buf = atomic_load_explicit(&v->data, memory_order_acquire); \
-	VEC_MEMCPY((u8*)(buf + index), (u8*)in, sizeof(TYPE)); \
-}
-
-// require definition of VEC_MEMCPY, vector_resiz
-#define ATOMIC_VECTOR_DEFINE_ADD(TYPE) \
-void atomic_vector_add(TYPE)(vector(TYPE)* v, TYPE* data) {\
-	u32 size = atomic_load_explicit(&v->size, memory_order_relaxed); \
-	while (!atomic_compare_exchange_weak_explicit(&v->size, &size, size + 1, memory_order_release, memory_order_relaxed)); \
-	u32 reserve = atomic_load_explicit(&v->reserve, memory_order_acquire); \
-    if (reserve < size) \
-        atomic_vector_resize(TYPE)(v, v->size * 2); \
-	atomic_vector_store(TYPE)(v, size, data); \
-}
-
-#define ATOMIC_VECTOR_DEFINE_RM(TYPE) \
-u32 atomic_vector_rm(TYPE)(atomic_vector(TYPE)* v) { \
-	u32 size = atomic_load_explicit(&v->size, memory_order_relaxed); \
-	while (!atomic_compare_exchange_weak_explicit(&v->size, &size, size - 1, memory_order_release, memory_order_relaxed)); \
-	return size - 1; \
-}
-
-// require definition of VEC_ALLOC and VEC_CPY
-// always copies data
-#define ATOMIC_VECTOR_DEFINE_RESIZE(TYPE) \
-void atomic_vector_resize(TYPE)(atomic_vector(TYPE)* v, u32 size) {\
-	if (!spinlock_wait(&v->flags, ATOMIC_RESIZE)) {\
-		spinlock_signal(&v->flags, ATOMIC_RESIZE); \
-		return; \
-	} \
-	u32 vsize = atomic_load_explicit(&v->size, memory_order_acquire); \
-	TYPE* old = atomic_load_explicit(&v->data, memory_order_relax); \
-	TYPE* buf = (TYPE*)VEC_ALLOC(size * sizeof(TYPE)); \
-	vector(u8) dst = { buf, sizeof(TYPE), size }; \
-	vector(u8) src = { old, sizeof(TYPE), vsize }; \
-	VEC_CPY(&dst, &src); \
-	atomic_store_explicit(&v->data, buf, memory_order_release); \
-	atomic_store_explicit(&v->reserve, size, memory_order_release); \
-	spinlock_signal(&v->flags, ATOMIC_RESIZE); \
-	free(v->data); \
-}
-
-#define VECTOR_DECLARE_FN__() VECTOR_DECLARE_FN_
-
-#define VECTOR_DECLARE_FN_(TYPE, arg, ...) \
-VECTOR_DECLARE_##arg(TYPE); \
-__VA_OPT__(VECTOR_DECLARE_FN__ PAREN (TYPE, __VA_ARGS__))
-
-#define VECTOR_DECLARE_FN(TYPE, arg, ...) \
-__VA_OPT__(EXPAND(VECTOR_DECLARE_FN_(TYPE, __VA_ARGS__)))
 
 #define ATOMIC_QUEUE_DEFINE(TYPE) \
 struct atomic_queue_##TYPE { \

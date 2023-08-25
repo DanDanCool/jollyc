@@ -79,25 +79,23 @@ __VA_OPT__(HASH_TABLE_DECLARE_FN__ PAREN (TYPE, __VA_ARGS__))
 #define HASH_TABLE_DECLARE_FN(K, V, arg, ...) \
 __VA_OPT__(EXPAND(HASH_TABLE_DECLARE_FN_(K, V, __VA_ARGS__)))
 
-#define HASH_TABLE_DEFINE(K, V) \
-struct key_item(K) {\
-	u32 hash; \
-	K key; \
-}; \
-struct hash_table(K, V) { \
-	vector(key_item(K)) keys; \
-	vector(V) items; \
-	u32 max_probe; \
-	u32 probe; \
+struct hash_table {
+	vector hash;
+	vector keys;
+	vector items;
+	u32 max_probe;
+	u32 probe;
 }
 
 #define HASH_TABLE_DEFINE_INIT(K, V) \
-void table_init(K, V)(hash_table(K, V)* table, u32 size) { \
+void table_init(K, V)(hash_table* table, u32 size) { \
 	size = hash_size(size); \
-	key_item(K)* key = (key_item(K)*)jolly_alloc(size * sizeof(key_item(K))); \
-	V* value = (V*)jolly_alloc(size * sizeof(V)); \
-	vector_init(key_item(K))(&table->keys, key, size); \
-	vector_init(V)(&table->items, value, size); \
+	u8* hash = mem_alloc(size * sizeof(u32)); \
+	u8* key = mem_alloc(size * sizeof(K)); \
+	u8* value = mem_alloc(size * sizeof(V)); \
+	vector_init(u32)(&table->hash; hash); \
+	vector_init(K)(&table->keys, key); \
+	vector_init(V)(&table->items, value); \
 	table->max_probe = 24; \
 	table->probe = 0; \
 }
