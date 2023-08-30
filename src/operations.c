@@ -1,0 +1,44 @@
+#include "operations.h"
+
+u32 fnv1a(u8* key, u32 bytes) {
+	u32 hash = 0x811c9dc5;
+
+	for (u32 i = 0; i < bytes; i++)
+		hash = (hash ^ key[i]) * 0x01000193;
+
+	return hash | (hash == 0);
+}
+
+COPY_DEFINE(u8);
+COPY_DEFINE(u16);
+COPY_DEFINE(u32);
+COPY_DEFINE(u64);
+COPY_DEFINE(i8);
+COPY_DEFINE(i16);
+COPY_DEFINE(i32);
+COPY_DEFINE(i64);
+COPY_DEFINE(f32);
+COPY_DEFINE(f64);
+
+HASH_DEFINE(u8);
+HASH_DEFINE(u16);
+HASH_DEFINE(u32);
+HASH_DEFINE(u64);
+HASH_DEFINE(i8);
+HASH_DEFINE(i16);
+HASH_DEFINE(i32);
+HASH_DEFINE(i64);
+HASH_DEFINE(f32);
+HASH_DEFINE(f64);
+
+EQ_DEFINE(u8);
+EQ_DEFINE(u16);
+EQ_DEFINE(u32);
+EQ_DEFINE(u64);
+EQ_DEFINE(i8);
+EQ_DEFINE(i16);
+EQ_DEFINE(i32);
+EQ_DEFINE(i64);
+EQ_DEFINE(f32);
+EQ_DEFINE(f64);
+

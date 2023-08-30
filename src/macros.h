@@ -1,6 +1,6 @@
 #pragma once
 
-const int MAGIC = 'j' << 24 | 'o' << 16 | 11 << 8 | 'y'
+#define MAGIC 'j' << 24 | 'o' << 16 | 11 << 8 | 'y'
 
 #define MM256 u32 __attribute__((aligned(256)))
 
@@ -35,7 +35,12 @@ _61,_62,_63,N,...) N
 9,8,7,6,5,4,3,2,1,0
 
 #define STR(x) #x
-#define CAT(a, b) a##b
+#define CAT(a, ...) CAT_(a, __VA_ARGS__)
+#define CAT_(a, ...) a ## __VA_ARGS__
+
+#define EMPTY()
+#define DEFER(id) id EMPTY()
+#define OBSTRUCT(...) __VA_ARGS__ DEFER(EMPTY)()
 
 #define elif else if
 
@@ -57,12 +62,3 @@ const interface(name) interface_impl(name, impl) =
 #define interface_impl(name, impl) interface(NAME)##_##impl
 
 #define vdispatch(name) vtable->##name
-
-#define DECLARE_FN__() DECLARE_FN_
-
-#define DECLARE_FN_(STRUCT, TYPE, arg, ...) \
-STRUCT##_##arg(TYPE); \
-__VA_OPT__(DECLARE_FN__ PAREN (NAME, TYPE, __VA_ARGS__))
-
-#define DECLARE_FN(STRUCT, TYPE, ...) \
-__VA_OPT__(EXPAND(DECLARE_FN_(STRUCT, TYPE, __VA_ARGS__)))
