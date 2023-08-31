@@ -110,7 +110,6 @@ EXPAND4(DEFER(TABLE_DEFINE_CREATE)(K, V); \
         DEFER(TABLE_DEFINE_DESTROY)(K, V); \
         DEFER(TABLE_DEFINE_GET)(K, V); \
         DEFER(TABLE_DEFINE_SET)(K, V); \
-        DEFER(TABLE_DEFINE_ADD)(K, V); \
         DEFER(TABLE_DEFINE_DEL)(K, V);)
 
 void table_create_(table_* t, u32 keysize, u32 itemsize, u32 size);

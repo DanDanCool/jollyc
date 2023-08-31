@@ -126,13 +126,13 @@ void table_probe_(table_* t, memptr key, hash_ hash) {
 
 			hash_ tmp = *item;
 			u8* ptr = t->keys.data + idx * key.size;
-			copy8(ptr, &buf, (u32)key.size);
+			copy8(ptr, (u8*)&buf, (u32)key.size);
 
 			*item = hash;
 			copy8(key.data, ptr, (u32)key.size);
 
 			hash = tmp;
-			copy8(&buf, key.data, (u32)key.size);
+			copy8((u8*)&buf, key.data, (u32)key.size);
 		}
 
 		probe++;

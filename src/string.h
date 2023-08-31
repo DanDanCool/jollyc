@@ -34,8 +34,30 @@ void table_set(string, V)(table_* t, string* key, V* value) { \
         copy(V)(value, cur); \
         return; \
     } \
-	strtable_set_(t, key); \
+	string str = string_create(key->data); \
+	strtable_set_(t, &str); \
 	vector_add(V)(&t->items, value); \
+}
+
+#define CSTRTABLE_DEFINE_SET(V) \
+void table_set(cstr, V)(table_* t, cstr key, V* value) { \
+	string str = string_create(key); \
+	V* cur = table_get(string, V)(t, &str); \
+	if (cur) { \
+		copy(V)(value, cur); \
+		string_destroy(&str); \
+		return; \
+	} \
+	strtable_set_(t, &str); \
+	vector_add(V)(&t->items, value); \
+}
+
+#define CSTRTABLE_DEFINE_GET(V) \
+V* table_get(cstr, V)(table_* t, cstr key) { \
+	string str = string_create(key); \
+	V* val = table_get(string, V)(t, &str); \
+	string_destroy(&str); \
+	return val; \
 }
 
 #define STRTABLE_DEFINE_DEL(V) \
@@ -45,14 +67,34 @@ void table_del(string, V)(table_* t, string* key) { \
 	vector_del(V)(&t->items, idx); \
 }
 
+#define CSTRTABLE_DEFINE_DEL(V) \
+void table_del(cstr, V)(table_* t, cstr key) { \
+	string str = string_create(key); \
+	table_del(string, V)(t, &str); \
+	string_destroy(&str); \
+}
+
+#define STRTABLE_DECLARE(V) \
+void table_set(cstr, V)(table_* t, cstr key, V* value); \
+V* table_get(cstr, V)(table_* t, cstr key); \
+void table_del(cstr, V)(table_* t, cstr key); \
+EXPAND4(DEFER(TABLE_DECLARE_CREATE)(string, V); \
+        DEFER(TABLE_DECLARE_RESIZE)(string, V); \
+        DEFER(TABLE_DECLARE_DESTROY)(string, V); \
+        DEFER(TABLE_DECLARE_GET)(string, V); \
+        DEFER(TABLE_DECLARE_SET)(string, V); \
+        DEFER(TABLE_DECLARE_DEL)(string, V);)
+
 #define STRTABLE_DEFINE(V) \
 EXPAND4(DEFER(TABLE_DEFINE_CREATE)(string, V); \
         DEFER(TABLE_DEFINE_RESIZE)(string, V); \
         DEFER(STRTABLE_DEFINE_DESTROY)(V); \
         DEFER(TABLE_DEFINE_GET)(string, V); \
+		DEFER(CSTRTABLE_DEFINE_SET)(V); \
+		DEFER(CSTRTABLE_DEFINE_GET)(V); \
         DEFER(STRTABLE_DEFINE_SET)(V); \
-        DEFER(TABLE_DEFINE_ADD)(string, V); \
-        DEFER(STRTABLE_DEFINE_DEL)(V);)
+        DEFER(STRTABLE_DEFINE_DEL)(V); \
+		DEFER(CSTRTABLE_DEFINE_DEL)(V);)
 
 void strtable_destroy_(table_* t);
 void strtable_set_(table_* t, string* key);

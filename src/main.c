@@ -5,7 +5,7 @@
 #include <stdio.h>
 
 TABLE_DECLARE(u32, u32);
-TABLE_DECLARE(string, i32);
+STRTABLE_DECLARE(i32);
 
 void test_vector() {
 	vector(i32) v;
@@ -50,12 +50,10 @@ void test_strtable() {
 	table(string, i32) t;
 	table_create(string, i32)(&t, 0);
 
-	string key = string_create("hello");
 	i32 val = -69;
-	table_set(string, i32)(&t, &key, &val);
-	string_destroy(&key);
+	table_set(cstr, i32)(&t, "hello", &val);
 
-	key = string_create("world");
+	string key = string_create("world");
 	val = 420;
 	table_set(string, i32)(&t, &key, &val);
 	string_destroy(&key);
@@ -98,4 +96,14 @@ int main() {
 }
 
 TABLE_DEFINE(u32, u32);
+
+//TABLE_DEFINE_CREATE(string, i32);
+//TABLE_DEFINE_RESIZE(string, i32);
+//STRTABLE_DEFINE_DESTROY(i32);
+//TABLE_DEFINE_GET(string, i32);
+//CSTRTABLE_DEFINE_SET(i32);
+//CSTRTABLE_DEFINE_GET(i32);
+//STRTABLE_DEFINE_SET(i32);
+//STRTABLE_DEFINE_DEL(i32);
+//CSTRTABLE_DEFINE_DEL(i32);
 STRTABLE_DEFINE(i32);

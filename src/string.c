@@ -137,8 +137,7 @@ void strtable_destroy_(table_* t) {
 void strtable_set_(table_* t, string* key) {
 	u32 idx = t->items.size;
 	hash_ hash = { hash(string)(key), idx };
-	string str = string_create(key->data);
-	memptr k = { (u8*)&str, sizeof(string) };
+	memptr k = { (u8*)key, sizeof(string) };
 	table_probe_(t, k, hash);
     table_resize_(t, sizeof(string), t->reserve * 2);
 }
