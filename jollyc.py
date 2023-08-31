@@ -16,7 +16,7 @@ debug = lib.filter("debug")
 debug["debug"] = True
 
 test = jmake.Project("test", jmake.Target.EXECUTABLE)
-test.add("main.c")
+test.add("src/main.c")
 test.depend(lib)
 
 debug = test.filter("debug")
