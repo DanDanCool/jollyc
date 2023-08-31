@@ -1,5 +1,7 @@
 import jmake
 
+jmake.setupenv()
+
 workspace = jmake.Workspace("jollyc")
 workspace.lang = "c17"
 
@@ -7,6 +9,8 @@ lib = jmake.Project("jollyc", jmake.Target.STATIC_LIBRARY)
 files = jmake.glob("src", "*.h") + jmake.glob("src", "*.c")
 files = [ file for file in files if file != "main.c" ]
 lib.add(files)
+
+lib.includes.extend(jmake.fullpath("src"))
 
 host = jmake.Host()
 if host.os == jmake.Platform.WIN32:
