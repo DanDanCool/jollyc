@@ -32,15 +32,14 @@ void test_table() {
 
     for (u32 i = 0; i < 111; i++) {
         u32 val = i * 2;
-        table_set(u32, u32)(&t, &i, &val);
+        table_set(u32, u32)(&t, i, &val);
     }
 
-    u32 key = 5;
     u32 a = 0;
-    u32* tmp = table_get(u32, u32)(&t, &key);
+    u32* tmp = table_get(u32, u32)(&t, 5);
     if (tmp) a = *tmp;
-	table_del(u32, u32)(&t, &key);
-    tmp = table_get(u32, u32)(&t, &key);
+	table_del(u32, u32)(&t, 5);
+    tmp = table_get(u32, u32)(&t, 5);
     if (!tmp) printf("%i\n", a);
 
     table_destroy(u32, u32)(&t);
@@ -55,34 +54,34 @@ void test_strtable() {
 
 	string key = string_create("world");
 	val = 420;
-	table_set(string, i32)(&t, &key, &val);
+	table_set(string, i32)(&t, key, &val);
 	string_destroy(&key);
 
 	key = string_create("food");
 	val = 2343420;
-	table_set(string, i32)(&t, &key, &val);
+	table_set(string, i32)(&t, key, &val);
 	string_destroy(&key);
 
 	key = string_create("baz");
 	val = -420;
-	table_set(string, i32)(&t, &key, &val);
+	table_set(string, i32)(&t, key, &val);
 	string_destroy(&key);
 
 	key = string_create("bar");
 	val = 420234;
-	table_set(string, i32)(&t, &key, &val);
+	table_set(string, i32)(&t, key, &val);
 	string_destroy(&key);
 
 	key = string_create("world");
-	table_del(string, i32)(&t, &key);
+	table_del(string, i32)(&t, key);
 	string_destroy(&key);
 
 	key = string_create("hello");
-	val = *table_get(string, i32)(&t, &key);
+	val = *table_get(string, i32)(&t, key);
 	string_destroy(&key);
 
 	key = string_create("world");
-	i32* tmp = table_get(string, i32)(&t, &key);
+	i32* tmp = table_get(string, i32)(&t, key);
 	if (!tmp) printf("hello strtable %i\n", val);
 	string_destroy(&key);
 

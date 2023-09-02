@@ -23,6 +23,40 @@ void vector_destroy_(vector_* v) {
 	v->size = 0;
 }
 
+void heap_siftup_(vector_* v, u32 idx, pfn_swap swapfn, pfn_le lefn, u32 keysize) {
+	u32 offset = idx % 2 ? 1 : 2;
+	u32 p = (idx - offset) / 2;
+	u8* iptr = vector_at(u8)(v, idx * keysize);
+	u8* pptr = vector_at(u8)(v, p * keysize);
+
+	while (p >= 0 && lefn(iptr, pptr)) {
+		swapfn(iptr, pptr);
+		idx = p;
+		offset = idx % 2 ? 1 : 2;
+		p = (idx - offset) / 2;
+		iptr = vector_at(u8)(v, idx * keysize);
+		pptr = vector_at(u8)(v, p * keysize);
+	}
+}
+
+void heap_siftdown_(vector_* v, u32 idx, pfn_swap swapfn, pfn_lt ltfn, u32 keysize) {
+	u32 left = 2 * idx + 1;
+	u32 right = 2 * idx + 2;
+	while (left < v->size) {
+		u8* iptr = vector_at(u8)(v, idx * keysize);
+		u8* lptr = vector_at(u8)(v, left * keysize);
+		u8* rptr = right < v->size ? vector_at(u8)(v, right * keysize) : NULL;
+
+		idx = ltfn(rptr, lptr) ? right : left;
+		u8* swap = vector_at(u8)(v, idx * keysize);
+		if (ltfn(iptr, swap)) break;
+
+		swapfn(iptr, swap);
+		left = 2 * idx + 1;
+		right = 2 * idx + 2;
+	}
+}
+
 VECTOR_DEFINE(i8);
 VECTOR_DEFINE(i16);
 VECTOR_DEFINE(i32);

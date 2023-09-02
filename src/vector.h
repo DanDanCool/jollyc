@@ -15,6 +15,9 @@ void vector_create_(vector_* v, u32 bytes);
 void vector_resize_(vector_* v, u32 bytes);
 void vector_destroy_(vector_* v);
 
+void heap_siftup_(vector_* v, u32 idx, pfn_swap swapfn, pfn_le lefn, u32 keysize);
+void heap_siftdown_(vector_* v, u32 idx, pfn_swap swapfn, pfn_lt ltfn, u32 keysize);
+
 #define vector(type) vector_
 #define vector_create(TYPE) vector_create_##TYPE
 #define vector_destroy(TYPE) vector_destroy_
@@ -24,6 +27,10 @@ void vector_destroy_(vector_* v);
 #define vector_set(TYPE) vector_set_##TYPE
 #define vector_add(TYPE) vector_add_##TYPE
 #define vector_del(TYPE) vector_rm_##TYPE
+
+#define heap(type) heap_##type
+#define heap_add(type) heap_add_##type
+#define heap_del(type) heap_del_##type
 
 #define VECTOR_DECLARE_CREATE(TYPE) \
 void vector_create(TYPE)(vector_* v, u32 size)
@@ -93,11 +100,10 @@ void vector_add(TYPE)(vector_* v, TYPE* data) {\
 #define VECTOR_DEFINE_DEL(TYPE) \
 TYPE* vector_del(TYPE)(vector_* v, u32 idx) { \
 	v->size--; \
-	TYPE tmp; \
-	vector_get(TYPE)(v, &tmp, idx); \
-	vector_set(TYPE)(v, vector_at(TYPE)(v, v->size), idx); \
-	vector_set(TYPE)(v, &tmp, v->size + 1); \
-	return vector_at(TYPE)(v, v->size + 1); \
+	TYPE* root = vector_at(TYPE)(v, idx); \
+	TYPE* last = vector_at(TYPE)(v, v->size); \
+	swap(TYPE)(root, last); \
+	return vector_at(TYPE)(v, v->size); \
 }
 
 #define VECTOR_DEFINE(TYPE) \
@@ -108,6 +114,43 @@ EXPAND4(DEFER(VECTOR_DEFINE_CREATE)(TYPE); \
         DEFER(VECTOR_DEFINE_SET)(TYPE); \
         DEFER(VECTOR_DEFINE_ADD)(TYPE); \
         DEFER(VECTOR_DEFINE_DEL)(TYPE);)
+
+#define HEAP_MAKE_DECLARE(TYPE) \
+void heap(TYPE)(vector_* v)
+
+#define HEAP_ADD_DECLARE(TYPE) \
+void heap_add(TYPE)(vector_* v, TYPE* val)
+
+#define HEAP_DEL_DECLARE(TYPE) \
+TYPE* heap_del(TYPE)(vector_* v, u32 idx)
+
+#define HEAP_MAKE(TYPE) \
+EXPAND4(DEFER(HEAP_MAKE_DECLARE)(TYPE); \
+		DEFER(HEAP_ADD_DECLARE)(TYPE); \
+		DEFER(HEAP_DEL_DECLARE)(TYPE); )
+
+#define HEAP_MAKE_DEFINE(TYPE) \
+void heap(TYPE)(vector_* v) { \
+	u32 offset = v->size % 2 ? 3 : 2; \
+	u32 i = (v->size - offset) / 2; \
+	for (; i >= 0; i--) { \
+		heap_siftdown_(v, i, swap_(TYPE), lt_(TYPE), sizeof(TYPE)); \
+	} \
+}
+
+#define HEAP_ADD_DEFINE(TYPE) \
+void heap_add(TYPE)(vector_* v, TYPE* val) { \
+	vector_add(TYPE)(v, val); \
+	heap_siftup_(v, v->size - 1, swap_(TYPE), le_(TYPE), sizeof(TYPE)); \
+}
+
+#define HEAP_DEL_DEFINE(TYPE) \
+TYPE* heap_del(TYPE)(vector_* v, u32 idx) { \
+	TYPE* val = vector_at(TYPE)(v, idx); \
+	vector_del(TYPE)(v, idx); \
+	heap_siftdown_(v, idx, swap_(TYPE), lt_(TYPE), sizeof(TYPE)); \
+	return val; \
+}
 
 VECTOR_DECLARE(i8);
 VECTOR_DECLARE(i16);

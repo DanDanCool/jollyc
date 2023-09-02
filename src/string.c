@@ -92,24 +92,19 @@ void string_destroy(string* str) {
 	str->size = 0;
 }
 
-void copy(string)(string* src, string* dst) {
-	assert(src->size == dst->size);
-	copy256(src->data, dst->data, (u32)src->size);
+COPY_DEFINE(string);
+SWAP_DEFINE(string);
+
+u32 hash(string)(string key) {
+	return fnv1a(key.data, (u32)key.size);
 }
 
-u32 hash(string)(string* key) {
-	return fnv1a(key->data, (u32)key->size);
-}
-
-int eq(string)(u8* a, u8* b) {
-	string* s1 = (string*)a;
-	string* s2 = (string*)b;
-
+int eq(string)(string* s1, string* s2) {
 	if (s1->size != s2->size) return false;
 
 	u32 count = align_size256((u32)s1->size) / BLOCK_32;
-	a = s1->data;
-	b = s2->data;
+	u8* a = s1->data;
+	u8* b = s2->data;
 	for (u32 i = 0; i < count; i++) {
 		__m256i x = _mm256_load_si256((__m256i*)a);
 		__m256i y = _mm256_load_si256((__m256i*)b);
@@ -117,9 +112,16 @@ int eq(string)(u8* a, u8* b) {
 		__m256i z = _mm256_cmpeq_epi8(x, y);
 		int equal = _mm256_testc_si256(z, z);
 		if (!equal) return false;
+
+        a += BLOCK_32;
+        b += BLOCK_32;
 	}
 
 	return true;
+}
+
+int _eq(string)(u8* s1, u8* s2) {
+    return eq(string)((string*)s1, (string*)s2);
 }
 
 VECTOR_DEFINE(string);
@@ -134,18 +136,18 @@ void strtable_destroy_(table_* t) {
 	table_destroy_(t);
 }
 
-void strtable_set_(table_* t, string* key) {
+void strtable_set_(table_* t, string key) {
 	u32 idx = t->items.size;
 	hash_ hash = { hash(string)(key), idx };
-	memptr k = { (u8*)key, sizeof(string) };
+	memptr k = { (u8*)&key, sizeof(string) };
 	table_probe_(t, k, hash);
     table_resize_(t, sizeof(string), t->reserve * 2);
 }
 
-u32 strtable_del_(table_* t, string* key) {
+u32 strtable_del_(table_* t, string key) {
 	hash_ hash = { hash(string)(key), 0 };
-	memptr k = { (u8*)key, sizeof(string) };
-	u32 idx = table_find_(t, k, hash, eq(string));
+	memptr k = { (u8*)&key, sizeof(string) };
+	u32 idx = table_find_(t, k, hash, _eq(string));
 	if (idx == U32_MAX) return U32_MAX;
 	hash_* h = (hash_*)vector_at(u64)(&t->hash, idx);
 	string* str = vector_at(string)(&t->keys, idx);

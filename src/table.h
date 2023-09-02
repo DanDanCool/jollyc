@@ -36,13 +36,13 @@ void table_resize(K, V)(table_* t, u32 size)
 void table_destroy(K, V)(table_* t)
 
 #define TABLE_DECLARE_SET(K, V) \
-void table_set(K, V)(table_* t, K* key, V* value)
+void table_set(K, V)(table_* t, K key, V* value)
 
 #define TABLE_DECLARE_GET(K, V) \
-V* table_get(K, V)(table_* t, K* key)
+V* table_get(K, V)(table_* t, K key)
 
 #define TABLE_DECLARE_DEL(K, V) \
-void table_del(K, V)(table_* t, K* key)
+void table_del(K, V)(table_* t, K key)
 
 #define TABLE_DECLARE(K, V) \
 EXPAND4(DEFER(TABLE_DECLARE_CREATE)(K, V); \
@@ -68,7 +68,7 @@ void table_destroy(K, V)(table_* t) { \
 }
 
 #define TABLE_DEFINE_SET(K, V) \
-void table_set(K, V)(table_* t, K* key, V* value) { \
+void table_set(K, V)(table_* t, K key, V* value) { \
     V* cur = table_get(K, V)(t, key); \
     if (cur) { \
         copy(V)(value, cur); \
@@ -76,27 +76,27 @@ void table_set(K, V)(table_* t, K* key, V* value) { \
     } \
 	u32 idx = t->items.size; \
 	hash_ hash = { hash(K)(key), idx }; \
-	memptr k = { (u8*)key, sizeof(K) }; \
+	memptr k = { (u8*)&key, sizeof(K) }; \
 	table_probe_(t, k, hash); \
     table_resize_(t, sizeof(K), t->reserve * 2); \
 	vector_add(V)(&t->items, value); \
 }
 
 #define TABLE_DEFINE_GET(K, V) \
-V* table_get(K, V)(table_* t, K* key) { \
+V* table_get(K, V)(table_* t, K key) { \
 	hash_ hash = { hash(K)(key), 0 }; \
-	memptr k = { (u8*)key, sizeof(K) }; \
-	u32 idx = table_find_(t, k, hash, eq(K)); \
+	memptr k = { (u8*)&key, sizeof(K) }; \
+	u32 idx = table_find_(t, k, hash, _eq(K)); \
 	if (idx == U32_MAX) return NULL; \
 	hash = *(hash_*)vector_at(u64)(&t->hash, idx); \
 	return vector_at(V)(&t->items, hash.index); \
 }
 
 #define TABLE_DEFINE_DEL(K, V) \
-void table_del(K, V)(table_* t, K* key) { \
+void table_del(K, V)(table_* t, K key) { \
 	hash_ hash = { hash(K)(key), 0 }; \
-	memptr k = { (u8*)key, sizeof(K) }; \
-	u32 idx = table_find_(t, k, hash, eq(K)); \
+	memptr k = { (u8*)&key, sizeof(K) }; \
+	u32 idx = table_find_(t, k, hash, _eq(K)); \
 	if (idx == U32_MAX) return; \
 	hash_* h = (hash_*)vector_at(u64)(&t->hash, idx); \
 	vector_del(V)(&t->items, h->index); \
