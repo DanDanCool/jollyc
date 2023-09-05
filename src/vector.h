@@ -28,9 +28,20 @@ void heap_siftdown_(vector_* v, u32 idx, pfn_swap swapfn, pfn_lt ltfn, u32 keysi
 #define vector_add(TYPE) vector_add_##TYPE
 #define vector_del(TYPE) vector_rm_##TYPE
 
+#define pair(a, b) pair_##a##_##b
+
+#define PAIR_DECLARE(a, b) \
+typedef struct pair(a, b) pair(a, b); \
+struct pair(a, b) { \
+	a first; \
+	b second; \
+}
+
+// min heap
 #define heap(type) heap_##type
 #define heap_add(type) heap_add_##type
 #define heap_del(type) heap_del_##type
+#define heap_replace(type) heap_replace_##type
 
 #define VECTOR_DECLARE_CREATE(TYPE) \
 void vector_create(TYPE)(vector_* v, u32 size)
@@ -124,33 +135,50 @@ void heap_add(TYPE)(vector_* v, TYPE* val)
 #define HEAP_DEL_DECLARE(TYPE) \
 TYPE* heap_del(TYPE)(vector_* v, u32 idx)
 
-#define HEAP_MAKE(TYPE) \
+#define HEAP_REPLACE_DECLARE(TYPE) \
+void heap_replace(TYPE)(vector_* v, TYPE* val)
+
+#define HEAP_DECLARE(TYPE) \
 EXPAND4(DEFER(HEAP_MAKE_DECLARE)(TYPE); \
 		DEFER(HEAP_ADD_DECLARE)(TYPE); \
-		DEFER(HEAP_DEL_DECLARE)(TYPE); )
+		DEFER(HEAP_DEL_DECLARE)(TYPE); \
+		DEFER(HEAP_REPLACE_DECLARE)(TYPE); )
 
 #define HEAP_MAKE_DEFINE(TYPE) \
 void heap(TYPE)(vector_* v) { \
 	u32 offset = v->size % 2 ? 3 : 2; \
-	u32 i = (v->size - offset) / 2; \
+	i32 i = (v->size - offset) / 2; \
 	for (; i >= 0; i--) { \
-		heap_siftdown_(v, i, swap_(TYPE), lt_(TYPE), sizeof(TYPE)); \
+		heap_siftdown_(v, i, _swap(TYPE), _lt(TYPE), sizeof(TYPE)); \
 	} \
 }
 
 #define HEAP_ADD_DEFINE(TYPE) \
 void heap_add(TYPE)(vector_* v, TYPE* val) { \
 	vector_add(TYPE)(v, val); \
-	heap_siftup_(v, v->size - 1, swap_(TYPE), le_(TYPE), sizeof(TYPE)); \
+	heap_siftup_(v, v->size - 1, _swap(TYPE), _le(TYPE), sizeof(TYPE)); \
 }
 
 #define HEAP_DEL_DEFINE(TYPE) \
 TYPE* heap_del(TYPE)(vector_* v, u32 idx) { \
-	TYPE* val = vector_at(TYPE)(v, idx); \
-	vector_del(TYPE)(v, idx); \
-	heap_siftdown_(v, idx, swap_(TYPE), lt_(TYPE), sizeof(TYPE)); \
+	TYPE* val = vector_del(TYPE)(v, idx); \
+	heap_siftdown_(v, idx, _swap(TYPE), _lt(TYPE), sizeof(TYPE)); \
 	return val; \
 }
+
+#define HEAP_REPLACE_DEFINE(TYPE) \
+void heap_replace(TYPE)(vector_* v, TYPE* val) { \
+	TYPE* top = vector_at(TYPE)(v, 0); \
+	if (lt(TYPE)(val, top)) return; \
+	copy(TYPE)(val, top); \
+	heap_siftdown_(v, 0, _swap(TYPE), _lt(TYPE), sizeof(TYPE)); \
+}
+
+#define HEAP_DEFINE(TYPE) \
+EXPAND4(DEFER(HEAP_MAKE_DEFINE)(TYPE); \
+		DEFER(HEAP_ADD_DEFINE)(TYPE); \
+		DEFER(HEAP_DEL_DEFINE)(TYPE); \
+		DEFER(HEAP_REPLACE_DEFINE)(TYPE); )
 
 VECTOR_DECLARE(i8);
 VECTOR_DECLARE(i16);

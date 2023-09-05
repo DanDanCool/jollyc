@@ -54,16 +54,20 @@ string string_combine(vector_ strings) {
 	return data;
 }
 
-vector_ string_split(string str, char delim) {
+vector_ string_split(string str, const char* delim) {
 	vector_ res;
 	vector_create(string)(&res, 0);
 
 	u32 beg = 0;
 	for (u32 i = 0; i < str.size; i++) {
-		if (string_at(str, i) == delim) {
-			string substr = string_substr(str, beg, i);
-			vector_add(string)(&res, &substr);
-			beg = i + 1;
+		const char* ptr = delim;
+		while (*ptr) {
+			if (string_at(str, i) == *ptr) {
+				string substr = string_substr(str, beg, i);
+				vector_add(string)(&res, &substr);
+				beg = i + 1;
+			}
+			ptr++;
 		}
 	}
 	string substr = string_substr(str, beg, (u32)str.size);

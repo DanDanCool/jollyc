@@ -7,7 +7,6 @@ workspace.lang = "c17"
 
 lib = jmake.Project("jollyc", jmake.Target.STATIC_LIBRARY)
 files = jmake.glob("src", "*.h") + jmake.glob("src", "*.c")
-files = [ file for file in files if file != "main.c" ]
 lib.add(files)
 
 lib.includes.extend(jmake.fullpath("src"))
@@ -20,7 +19,8 @@ debug = lib.filter("debug")
 debug["debug"] = True
 
 test = jmake.Project("test", jmake.Target.EXECUTABLE)
-test.add("src/main.c")
+test.add("test/main.c")
+test.include(jmake.fullpath("src"))
 test.depend(lib)
 
 debug = test.filter("debug")

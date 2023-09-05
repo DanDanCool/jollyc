@@ -73,7 +73,7 @@ int _eq(type)(u8* a, u8* b) { \
 	return eq(type)((type*)a, (type*)b); \
 }
 
-#define LE_DECLARE(TYPE) \
+#define LE_DECLARE(type) \
 int le(type)(type* a, type* b); \
 int _le(type)(u8* a, u8* b)
 
@@ -86,7 +86,7 @@ int _le(type)(u8* a, u8* b) { \
 	return le(type)((type*)a, (type*)b); \
 }
 
-#define LT_DECLARE(TYPE) \
+#define LT_DECLARE(type) \
 int lt(type)(type* a, type* b); \
 int _lt(type)(u8* a, u8* b)
 
@@ -145,3 +145,25 @@ EQ_DECLARE(i32);
 EQ_DECLARE(i64);
 EQ_DECLARE(f32);
 EQ_DECLARE(f64);
+
+LE_DECLARE(u8);
+LE_DECLARE(u16);
+LE_DECLARE(u32);
+LE_DECLARE(u64);
+LE_DECLARE(i8);
+LE_DECLARE(i16);
+LE_DECLARE(i32);
+LE_DECLARE(i64);
+LE_DECLARE(f32);
+LE_DECLARE(f64);
+
+LT_DECLARE(u8);
+LT_DECLARE(u16);
+LT_DECLARE(u32);
+LT_DECLARE(u64);
+LT_DECLARE(i8);
+LT_DECLARE(i16);
+LT_DECLARE(i32);
+LT_DECLARE(i64);
+LT_DECLARE(f32);
+LT_DECLARE(f64);

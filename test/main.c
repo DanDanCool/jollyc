@@ -4,11 +4,13 @@
 
 #include <stdio.h>
 
+HEAP_DECLARE(i32);
 TABLE_DECLARE(u32, u32);
 STRTABLE_DECLARE(i32);
 
 void test_vector() {
 	vector(i32) v;
+	printf("---- vector ----\n");
 	vector_create(i32)(&v, 0);
 	for (i32 i = 0; i < 100; i++) {
 		vector_add(i32)(&v, &i);
@@ -24,10 +26,36 @@ void test_vector() {
 	printf("hello world %i\n", a);
 	vector_destroy(int)(&v);
 	printf("hello world %i\n", v.reserve);
+
+	printf("\n");
+}
+
+void test_heap() {
+	vector(i32) v;
+	vector_create(i32)(&v, 0);
+	for (i32 i = 15; i >= 0; i--) {
+		vector_add(i32)(&v, &i);
+	}
+
+	printf("---- heap ----\n");
+	heap(i32)(&v);
+
+	for (i32 i = 16; i < 32; i++) {
+		heap_replace(i32)(&v, &i);
+	}
+
+	while (v.size) {
+		i32 top = *heap_del(i32)(&v, 0);
+		printf("%i\n", top);
+	}
+
+	vector_destroy(i32)(&v);
+	printf("\n");
 }
 
 void test_table() {
     table(u32, u32) t;
+	printf("---- table ----\n");
     table_create(u32, u32)(&t, 5);
 
     for (u32 i = 0; i < 111; i++) {
@@ -43,11 +71,14 @@ void test_table() {
     if (!tmp) printf("%i\n", a);
 
     table_destroy(u32, u32)(&t);
+	printf("\n");
 }
 
 void test_strtable() {
 	table(string, i32) t;
 	table_create(string, i32)(&t, 0);
+
+	printf("---- strtable ----\n");
 
 	i32 val = -69;
 	table_set(cstr, i32)(&t, "hello", &val);
@@ -86,12 +117,15 @@ void test_strtable() {
 	string_destroy(&key);
 
 	table_destroy(string, i32)(&t);
+
+	printf("\n");
 }
 
 int main() {
 	test_table();
 	test_strtable();
 	test_vector();
+	test_heap();
 }
 
 TABLE_DEFINE(u32, u32);
@@ -106,3 +140,5 @@ TABLE_DEFINE(u32, u32);
 //STRTABLE_DEFINE_DEL(i32);
 //CSTRTABLE_DEFINE_DEL(i32);
 STRTABLE_DEFINE(i32);
+
+HEAP_DEFINE(i32);

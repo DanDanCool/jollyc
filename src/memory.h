@@ -28,7 +28,9 @@ struct memptr {
 
 u32 align_size256(u32 size);
 memptr alloc256(u32 size);
+memptr alloc8(u32 size);
 void free256(void* ptr);
+void free8(void* ptr);
 void copy256(u8* src, u8* dst, u32 bytes);
 void zero256(u8* dst, u32 bytes);
 void copy8(u8* src, u8* dst, u32 bytes);

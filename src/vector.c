@@ -10,7 +10,8 @@ void vector_create_(vector_* v, u32 bytes) {
 
 void vector_resize_(vector_* v, u32 bytes) {
 	memptr ptr = alloc256(bytes);
-	copy256(v->data, ptr.data, (u32)ptr.size);
+	u32 size = MIN((u32)ptr.size, v->reserve);
+	copy256(v->data, ptr.data, size);
 	free256(v->data);
 	v->data = ptr.data;
 	v->reserve = (u32)ptr.size;

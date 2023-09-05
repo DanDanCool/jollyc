@@ -12,7 +12,7 @@ string string_create(cstr str);
 char string_at(string str, int idx);
 string string_cat(string s1, string s2);
 string string_combine(vector_ strings);
-vector_ string_split(string str, char delim);
+vector_ string_split(string str, const char* delim);
 string string_substr(string str, u32 beg, u32 end);
 void string_destroy(string* str);
 

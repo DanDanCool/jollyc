@@ -31,6 +31,17 @@ void free256(void* ptr) {
 #endif
 }
 
+memptr alloc8(u32 size) {
+	memptr ptr = {0};
+	ptr.size = size;
+	ptr.data = (u8*)malloc(size);
+	return ptr;
+}
+
+void free8(void* ptr) {
+	free(ptr);
+}
+
 void copy256(u8* src, u8* dst, u32 bytes) {
 	assert((bytes % BLOCK_32) == 0);
 	u32 count = bytes / BLOCK_32;
