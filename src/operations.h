@@ -49,6 +49,9 @@ void _swap(type)(u8* src, u8* dst) { \
 	swap(type)((type*)src, (type*)dst); \
 }
 
+#define STR_DECLARE(type) \
+string str(type)(type* val);
+
 #define MIN(x, y) (x) < (y) ? (x) : (y)
 #define MAX(x, y) (x) > (y) ? (x) : (y)
 
