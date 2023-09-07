@@ -14,6 +14,8 @@ lib.includes.extend(jmake.fullpath("src"))
 host = jmake.Host()
 if host.os == jmake.Platform.WIN32:
     lib.define("JOLLY_MSVC", 1)
+    lib.define("WIN32_LEAN_AND_MEAN", 1)
+    lib.compile("/experimental:c11atomics")
 
 debug = lib.filter("debug")
 debug["debug"] = True
