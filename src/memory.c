@@ -12,7 +12,7 @@ memptr alloc256(u32 size) {
 	memptr ptr = {0};
 	size = align_size256(size);
 
-#ifdef JOLLY_MSVC
+#ifdef JOLLY_WIN32
 #include <malloc.h>
 	ptr.data = (u8*)_aligned_malloc(size, DEFAULT_ALIGNMENT);
 #else
@@ -24,7 +24,7 @@ memptr alloc256(u32 size) {
 }
 
 void free256(void* ptr) {
-#ifdef JOLLY_MSVC
+#ifdef JOLLY_WIN32
 	_aligned_free(ptr);
 #else
 	free(ptr);

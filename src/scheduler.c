@@ -10,7 +10,6 @@ struct worker {
 	_Atomic u32 run;
 };
 
-QUEUE_DECLARE(taskinfo);
 VECTOR_DECLARE(worker);
 
 int worker_main(void* in) {
@@ -108,7 +107,7 @@ SWAP_DEFINE(worker);
 QUEUE_DEFINE(taskinfo);
 VECTOR_DEFINE(worker);
 
-#ifdef JOLLY_MSVC
+#ifdef JOLLY_WIN32
 #include <windows.h>
 #include <process.h>
 threadid thread_create(pfn_thread_start fn, void* args) {

@@ -26,6 +26,8 @@ struct taskinfo {
 	void* args;
 };
 
+QUEUE_DECLARE(taskinfo);
+
 typedef struct scheduler scheduler;
 struct scheduler {
 	vector_ threads;
