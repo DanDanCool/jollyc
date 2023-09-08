@@ -1,4 +1,4 @@
-#include "string.h"
+#include "strlib.h"
 #include "simd.h"
 
 #include <assert.h>
