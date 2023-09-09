@@ -41,12 +41,12 @@ int worker_main(void* in) {
 const static u32 THREAD_COUNT = 4;
 const static u32 TASK_COUNT = 128;
 
-void scheduler_create(scheduler* s) {
-	vector_create(worker)(&s->threads, THREAD_COUNT);
+void scheduler_create(scheduler* s, u32 count) {
+	vector_create(worker)(&s->threads, count);
 	queue_create(taskinfo)(&s->wait, TASK_COUNT);
 	queue_create(taskinfo)(&s->done, TASK_COUNT);
 
-	s->threads.size = THREAD_COUNT;
+	s->threads.size = count;
 	for (u32 i = 0; i < s->threads.size; i++) {
 		worker* t = vector_at(worker)(&s->threads, i);
 		t->lock = semaphore_create(1, 1);

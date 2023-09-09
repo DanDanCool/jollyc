@@ -35,7 +35,7 @@ struct scheduler {
 	queue_ done;
 };
 
-void scheduler_create(scheduler* s);
+void scheduler_create(scheduler* s, u32 count);
 void scheduler_destroy(scheduler* s);
 
 int scheduler_cansubmit(scheduler* s);
