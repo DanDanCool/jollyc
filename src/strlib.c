@@ -51,6 +51,7 @@ string string_combine(vector_ strings) {
 		}
 	}
 
+	data.size = bytes;
 	return data;
 }
 
