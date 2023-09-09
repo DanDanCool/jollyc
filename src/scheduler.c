@@ -22,6 +22,7 @@ int worker_main(void* in) {
 		taskinfo* task = queue_del(taskinfo)(&sched->wait);
 		if (!task) {
 			semaphore_release(args->starve);
+			semaphore_release(args->lock);
 			thread_yield();
 			continue;
 		}
