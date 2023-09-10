@@ -35,6 +35,7 @@ memptr alloc8(u32 size) {
 	memptr ptr = {0};
 	ptr.size = size;
 	ptr.data = (u8*)malloc(size);
+	zero8(ptr.data, (u32)ptr.size);
 	return ptr;
 }
 

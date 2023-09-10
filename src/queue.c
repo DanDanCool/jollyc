@@ -3,9 +3,9 @@
 #include <stdatomic.h>
 
 void queue_create_(queue_* q, u32 size) {
-	memptr data = alloc256(size);
+	memptr data = alloc256(size * sizeof(u64));
 	q->data = (u64*)data.data;
-	q->reserve = (u32)data.size;
+	q->reserve = size;
 	atomic_store_explicit(&q->size, 0, memory_order_relaxed);
 	atomic_store_explicit(&q->head, 0, memory_order_relaxed);
 	atomic_store_explicit(&q->head, 0, memory_order_relaxed);

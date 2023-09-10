@@ -25,18 +25,19 @@ void vector_destroy_(vector_* v) {
 }
 
 void heap_siftup_(vector_* v, u32 idx, pfn_swap swapfn, pfn_le lefn, u32 keysize) {
-	u32 offset = idx % 2 ? 1 : 2;
-	u32 p = (idx - offset) / 2;
+	i64 offset = idx % 2 ? 1 : 2;
+	i64 p = ((i64)idx - offset) / 2;
+	if (p < 0) return;
 	u8* iptr = vector_at(u8)(v, idx * keysize);
-	u8* pptr = vector_at(u8)(v, p * keysize);
+	u8* pptr = vector_at(u8)(v, (u32)p * keysize);
 
 	while (p >= 0 && lefn(iptr, pptr)) {
 		swapfn(iptr, pptr);
-		idx = p;
+		idx = (u32)p;
 		offset = idx % 2 ? 1 : 2;
-		p = (idx - offset) / 2;
+		p = ((i64)idx - offset) / 2;
 		iptr = vector_at(u8)(v, idx * keysize);
-		pptr = vector_at(u8)(v, p * keysize);
+		pptr = vector_at(u8)(v, (u32)p * keysize);
 	}
 }
 
