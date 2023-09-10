@@ -17,16 +17,22 @@ int worker_main(void* in) {
 	scheduler* sched = args->sched;
 
 	u32 run = atomic_load_explicit(&args->run, memory_order_relaxed);
+
+	const u32 MAX_BACKOFF = 128;
+	const u32 INITIAL_BACKOFF = 16;
+	u32 backoff = INITIAL_BACKOFF;
 	while (run) {
 		semaphore_acquire(args->lock);
 		taskinfo* task = queue_del(taskinfo)(&sched->wait);
 		if (!task) {
 			semaphore_release(args->starve);
 			semaphore_release(args->lock);
-			thread_yield();
+			thread_sleep(backoff);
+			backoff = MIN(MAX_BACKOFF, backoff * 2);
 			continue;
 		}
 
+		backoff = INITIAL_BACKOFF;
 		semaphore_tryacquire(args->starve);
 
 		task->task(task->args);
@@ -119,6 +125,10 @@ threadid thread_create(pfn_thread_start fn, void* args) {
 
 void thread_yield() {
 	(void)SwitchToThread();
+}
+
+void thread_sleep(int ms) {
+	Sleep(ms);
 }
 
 void thread_exit(int res) {

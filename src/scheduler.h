@@ -51,6 +51,7 @@ typedef int (*pfn_thread_start)(void* args);
 threadid thread_create(pfn_thread_start fn, void* args);
 void thread_join(threadid id);
 void thread_yield();
+void thread_sleep(int ms);
 void thread_exit(int res);
 
 mutex mutex_create();
