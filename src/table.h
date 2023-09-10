@@ -22,6 +22,7 @@ struct hash_ {
 #define table_create(K, V) table_create_##K##_##V
 #define table_resize(K, V) table_resize_##K##_##V
 #define table_destroy(K, V) table_destroy_##K##_##V
+#define table_clear(K, V) table_clear_##K##_##V
 #define table_set(K, V) table_set_##K##_##V
 #define table_get(K, V) table_get_##K##_##V
 #define table_del(K, V) table_del_##K##_##V
@@ -34,6 +35,9 @@ void table_resize(K, V)(table_* t, u32 size)
 
 #define TABLE_DECLARE_DESTROY(K, V) \
 void table_destroy(K, V)(table_* t)
+
+#define TABLE_DECLARE_CLEAR(K, V) \
+void table_clear(K, V)(table_* t)
 
 #define TABLE_DECLARE_SET(K, V) \
 void table_set(K, V)(table_* t, K key, V* value)
@@ -48,6 +52,7 @@ void table_del(K, V)(table_* t, K key)
 EXPAND4(DEFER(TABLE_DECLARE_CREATE)(K, V); \
         DEFER(TABLE_DECLARE_RESIZE)(K, V); \
         DEFER(TABLE_DECLARE_DESTROY)(K, V); \
+        DEFER(TABLE_DECLARE_CLEAR)(K, V); \
         DEFER(TABLE_DECLARE_GET)(K, V); \
         DEFER(TABLE_DECLARE_SET)(K, V); \
         DEFER(TABLE_DECLARE_DEL)(K, V);)
@@ -115,5 +120,6 @@ EXPAND4(DEFER(TABLE_DEFINE_CREATE)(K, V); \
 void table_create_(table_* t, u32 keysize, u32 itemsize, u32 size);
 void table_resize_(table_* t, u32 keysize, u32 size);
 void table_destroy_(table_* t);
+void table_clear_(table_* t);
 void table_probe_(table_* t, memptr key, hash_ hash);
 u32 table_find_(table_* t, memptr key, hash_ hash, pfn_eq eq_fn);

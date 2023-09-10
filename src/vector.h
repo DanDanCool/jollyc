@@ -14,6 +14,7 @@ struct vector {
 void vector_create_(vector_* v, u32 bytes);
 void vector_resize_(vector_* v, u32 bytes);
 void vector_destroy_(vector_* v);
+void vector_clear_(vector_* v);
 
 void heap_siftup_(vector_* v, u32 idx, pfn_swap swapfn, pfn_le lefn, u32 keysize);
 void heap_siftdown_(vector_* v, u32 idx, pfn_swap swapfn, pfn_lt ltfn, u32 keysize);
@@ -22,6 +23,7 @@ void heap_siftdown_(vector_* v, u32 idx, pfn_swap swapfn, pfn_lt ltfn, u32 keysi
 #define vector_create(TYPE) vector_create_##TYPE
 #define vector_destroy(TYPE) vector_destroy_
 #define vector_resize(TYPE) vector_resize_##TYPE
+#define vector_clear(TYPE) vector_clear_
 #define vector_at(TYPE) vector_at_##TYPE
 #define vector_get(TYPE) vector_get_##TYPE
 #define vector_set(TYPE) vector_set_##TYPE

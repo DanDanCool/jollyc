@@ -82,6 +82,12 @@ void table_destroy_(table_* t) {
 	t->probe = 0;
 }
 
+void table_clear_(table_* t) {
+	vector_clear_(&t->hash);
+	vector_clear_(&t->keys);
+	vector_clear_(&t->items);
+}
+
 u32 hash_size(u32 size) {
 	u32 best = U32_MAX;
 	u32 cur  = 0;

@@ -141,6 +141,16 @@ void strtable_destroy_(table_* t) {
 	table_destroy_(t);
 }
 
+void strtable_clear_(table_* t) {
+	for (u32 i = 0; i < t->reserve; i++) {
+		hash_* h = (hash_*)vector_at(u64)(&t->hash, i);
+		if (h->hash == 0) continue;
+		string* s = vector_at(string)(&t->keys, i);
+		string_destroy(s);
+	}
+	table_clear_(t);
+}
+
 void strtable_set_(table_* t, string key) {
 	u32 idx = t->items.size;
 	hash_ hash = { hash(string)(key), idx };

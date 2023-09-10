@@ -24,6 +24,11 @@ void vector_destroy_(vector_* v) {
 	v->size = 0;
 }
 
+void vector_clear_(vector_* v) {
+	v->size = 0;
+	zero256(v->data, v->reserve);
+}
+
 void heap_siftup_(vector_* v, u32 idx, pfn_swap swapfn, pfn_le lefn, u32 keysize) {
 	i64 offset = idx % 2 ? 1 : 2;
 	i64 p = ((i64)idx - offset) / 2;
