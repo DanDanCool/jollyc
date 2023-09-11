@@ -23,6 +23,8 @@ int worker_main(void* in) {
 	u32 backoff = INITIAL_BACKOFF;
 	while (run) {
 		semaphore_acquire(args->lock);
+		run = atomic_load_explicit(&args->run, memory_order_relaxed);
+
 		taskinfo* task = queue_del(taskinfo)(&sched->wait);
 		if (!task) {
 			semaphore_release(args->starve);
@@ -38,8 +40,6 @@ int worker_main(void* in) {
 		task->task(task->args);
 		queue_add(taskinfo)(&sched->done, task);
 		semaphore_release(args->lock);
-
-		run = atomic_load_explicit(&args->run, memory_order_relaxed);
 	}
 
 	return 0;
