@@ -1,7 +1,16 @@
+#ifdef JOLLY_DEBUG_HEAP
+#ifdef JOLLY_WIN32
+#define _CRTDBG_MAP_ALLOC
+#include <stdlib.h>
+#include <crtdbg.h>
+#endif
+#else
+#include <stdlib.h>
+#endif
+
 #include "memory.h"
 #include "simd.h"
 #include <assert.h>
-#include <stdlib.h>
 
 u32 align_size256(u32 size) {
 	u32 count = (size - 1) / BLOCK_32 + 1;
