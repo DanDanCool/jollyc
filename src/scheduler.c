@@ -37,7 +37,8 @@ int worker_main(void* in) {
 		backoff = INITIAL_BACKOFF;
 		semaphore_tryacquire(args->starve);
 
-		task->task(task->args);
+		u32 gen = atomic_load_explicit(&sched->gen, memory_order_acquire);
+		task->task(task, gen);
 		queue_add(taskinfo)(&sched->done, task);
 		semaphore_release(args->lock);
 	}
@@ -52,6 +53,7 @@ void scheduler_create(scheduler* s, u32 count) {
 	vector_create(worker)(ref(s->threads), count);
 	queue_create(taskinfo)(&s->wait, TASK_COUNT);
 	queue_create(taskinfo)(&s->done, TASK_COUNT);
+	atomic_store_explicit(&s->gen, 0, memory_order_release);
 
 	s->threads.size = count;
 	for (u32 i = 0; i < s->threads.size; i++) {
@@ -84,7 +86,12 @@ int scheduler_cansubmit(scheduler* s) {
 }
 
 void scheduler_submit(scheduler* s, taskinfo* task) {
+	task->gen = atomic_load_explicit(&s->gen, memory_order_acquire);
 	queue_add(taskinfo)(&s->wait, task);
+}
+
+void scheduler_invalidate(scheduler* s){
+	atomic_fetch_add_explicit(&s->gen, 1, memory_order_release);
 }
 
 void scheduler_waitall(scheduler* s) {

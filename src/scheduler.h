@@ -19,11 +19,12 @@ struct semaphore {
 	void* handle;
 };
 
-typedef void (*pfn_task)(void* args);
 typedef struct taskinfo taskinfo;
+typedef void (*pfn_task)(taskinfo* args, u32 gen);
 struct taskinfo {
 	pfn_task task;
 	void* args;
+	u32 gen;
 };
 
 QUEUE_DECLARE(taskinfo);
@@ -33,6 +34,7 @@ struct scheduler {
 	vector_ threads;
 	queue_ wait;
 	queue_ done;
+	_Atomic u32 gen;
 };
 
 void scheduler_create(scheduler* s, u32 count);
@@ -41,6 +43,7 @@ void scheduler_destroy(scheduler* s);
 int scheduler_cansubmit(scheduler* s);
 void scheduler_submit(scheduler* s, taskinfo* task);
 
+void scheduler_invalidate(scheduler* s);
 void scheduler_waitall(scheduler* s);
 
 void scheduler_run(scheduler* s);
