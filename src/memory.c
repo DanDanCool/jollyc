@@ -3,7 +3,6 @@
 #include <assert.h>
 #include <stdlib.h>
 
-#ifdef JOLLY_DEBUG_HEAP
 #ifdef JOLLY_WIN32
 #include <crtdbg.h>
 memptr alloc256_dbg_win32_(u32 size, const char* fn, int ln) {
@@ -31,7 +30,6 @@ void free256_dbg_win32_(void* ptr) {
 void free8_dbg_win32_(void* ptr) {
 	_free_dbg(ptr, _NORMAL_BLOCK);
 }
-#endif
 #endif
 
 u32 align_size256(u32 size) {

@@ -24,7 +24,7 @@ void test_vector() {
 
 	vector_get(i32)(&v, &a, 9);
 	printf("hello world %i\n", a);
-	vector_destroy(int)(&v);
+	vector_destroy(i32)(&v);
 	printf("hello world %i\n", v.reserve);
 
 	printf("\n");
@@ -126,6 +126,10 @@ int main() {
 	test_strtable();
 	test_vector();
 	test_heap();
+
+#ifdef JOLLY_DEBUG_HEAP
+	_CrtDumpMemoryLeaks();
+#endif
 }
 
 TABLE_DEFINE(u32, u32);
