@@ -12,21 +12,25 @@ lib.add(files)
 lib.includes.extend(jmake.fullpath("src"))
 
 host = jmake.Host()
-if host.os == jmake.Platform.WIN32:
-    lib.define("JOLLY_WIN32", 1)
-    lib.define("WIN32_LEAN_AND_MEAN", 1)
-    lib.compile("/experimental:c11atomics")
 
-debug = lib.filter("debug")
-debug["debug"] = True
+libdebug = lib.filter("debug")
+libdebug["debug"] = True
 
 test = jmake.Project("test", jmake.Target.EXECUTABLE)
 test.add("test/main.c")
 test.include(jmake.fullpath("src"))
 test.depend(lib)
 
-debug = test.filter("debug")
-debug["debug"] = True
+testdebug = test.filter("debug")
+testdebug["debug"] = True
+
+
+if host.os == jmake.Platform.WIN32:
+    lib.define("JOLLY_WIN32", 1)
+    lib.define("WIN32_LEAN_AND_MEAN", 1)
+    lib.compile("/experimental:c11atomics")
+    libdebug.define("JOLLY_DEBUG_HEAP", 1)
+    testdebug.define("JOLLY_DEBUG_HEAP", 1)
 
 workspace.add(lib)
 workspace.add(test)

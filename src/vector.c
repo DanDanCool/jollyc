@@ -8,6 +8,15 @@ void vector_create_(vector_* v, u32 bytes) {
 	v->size = 0;
 }
 
+void vector_create_dbg_(vector_* v, const char* fn, int ln, u32 bytes) {
+#ifdef JOLLY_WIN32
+	memptr ptr = alloc256_dbg_win32_(bytes, fn, ln);
+	v->data = ptr.data;
+	v->reserve = (u32)ptr.size;
+	v->size = 0;
+#endif
+}
+
 void vector_resize_(vector_* v, u32 bytes) {
 	memptr ptr = alloc256(bytes);
 	u32 size = MIN((u32)ptr.size, v->reserve);
@@ -18,7 +27,13 @@ void vector_resize_(vector_* v, u32 bytes) {
 }
 
 void vector_destroy_(vector_* v) {
+#ifdef JOLLY_DEBUG_HEAP
+#ifdef JOLLY_WIN32
+	void free256_dbg_win32_(void* ptr);
+#endif
+#else
 	free256(v->data);
+#endif
 	v->data = NULL;
 	v->reserve = 0;
 	v->size = 0;

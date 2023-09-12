@@ -16,11 +16,18 @@ void vector_resize_(vector_* v, u32 bytes);
 void vector_destroy_(vector_* v);
 void vector_clear_(vector_* v);
 
+void vector_create_dbg_(vector_* v, const char* fn, int ln, u32 bytes);
+
 void heap_siftup_(vector_* v, u32 idx, pfn_swap swapfn, pfn_le lefn, u32 keysize);
 void heap_siftdown_(vector_* v, u32 idx, pfn_swap swapfn, pfn_lt ltfn, u32 keysize);
 
-#define vector(type) vector_
+#ifdef JOLLY_DEBUG_HEAP
+#define vector_create(TYPE) vector_create_dbg_##TYPE
+#else
 #define vector_create(TYPE) vector_create_##TYPE
+#endif
+
+#define vector(type) vector_
 #define vector_destroy(TYPE) vector_destroy_
 #define vector_resize(TYPE) vector_resize_##TYPE
 #define vector_clear(TYPE) vector_clear_
@@ -45,8 +52,13 @@ struct pair(a, b) { \
 #define heap_del(type) heap_del_##type
 #define heap_replace(type) heap_replace_##type
 
+#ifdef JOLLY_DEBUG_HEAP
+#define VECTOR_DECLARE_CREATE(TYPE) \
+void vector_create(TYPE)(vector_* v, const char* fn, int ln, u32 size)
+#else
 #define VECTOR_DECLARE_CREATE(TYPE) \
 void vector_create(TYPE)(vector_* v, u32 size)
+#endif
 
 #define VECTOR_DECLARE_RESIZE(TYPE) \
 void vector_resize(TYPE)(vector_* v, u32 size)
@@ -75,11 +87,19 @@ EXPAND4(DEFER(VECTOR_DECLARE_CREATE)(TYPE); \
         DEFER(VECTOR_DECLARE_ADD)(TYPE); \
         DEFER(VECTOR_DECLARE_DEL)(TYPE);)
 
+#ifdef JOLLY_DEBUG_HEAP
+#define VECTOR_DEFINE_CREATE(TYPE) \
+void vector_create(TYPE)(vector_* v, const char* fn, int ln, u32 size) { \
+	size = MAX(size, BLOCK_32); \
+	vector_create_dbg_(v, fn, ln, size * sizeof(TYPE)); \
+}
+#else
 #define VECTOR_DEFINE_CREATE(TYPE) \
 void vector_create(TYPE)(vector_* v, u32 size) { \
 	size = MAX(size, BLOCK_32); \
 	vector_create_(v, size * sizeof(TYPE)); \
 }
+#endif
 
 #define VECTOR_DEFINE_RESIZE(TYPE) \
 void vector_resize(TYPE)(vector_* v, u32 size) { \

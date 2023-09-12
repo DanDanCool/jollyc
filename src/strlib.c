@@ -57,7 +57,7 @@ string string_combine(vector_ strings) {
 
 vector_ string_split(string str, const char* delim) {
 	vector_ res;
-	vector_create(string)(&res, 0);
+	vector_create(string)(ref(res), 0);
 
 	u32 beg = 0;
 	for (u32 i = 0; i < str.size; i++) {

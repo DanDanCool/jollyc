@@ -63,6 +63,12 @@ const interface(name) interface_impl(name, impl) =
 
 #define vdispatch(name) vtable->##name
 
+#ifdef JOLLY_DEBUG_HEAP
+#define ref(x) &x, __FILE__, __LINE__
+#else
+#define ref(x) &x
+#endif
+
 #ifdef JOLLY_WIN32
 #ifdef JOLLY_EXPORT
 #define JOLLY_API __declspec(dllexport)

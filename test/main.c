@@ -11,7 +11,7 @@ STRTABLE_DECLARE(i32);
 void test_vector() {
 	vector(i32) v;
 	printf("---- vector ----\n");
-	vector_create(i32)(&v, 0);
+	vector_create(i32)(ref(v), 0);
 	for (i32 i = 0; i < 100; i++) {
 		vector_add(i32)(&v, &i);
 	}
@@ -32,7 +32,7 @@ void test_vector() {
 
 void test_heap() {
 	vector(i32) v;
-	vector_create(i32)(&v, 0);
+	vector_create(i32)(ref(v), 0);
 	for (i32 i = 15; i >= 0; i--) {
 		vector_add(i32)(&v, &i);
 	}
