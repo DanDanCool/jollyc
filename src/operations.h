@@ -2,7 +2,6 @@
 
 #include "memory.h"
 
-
 typedef void (*pfn_copy)(u8* a, u8* b);
 typedef void (*pfn_swap)(u8* a, u8* b);
 typedef int (*pfn_eq)(u8* a, u8* b);

@@ -9,7 +9,7 @@ lib = jmake.Project("jollyc", jmake.Target.STATIC_LIBRARY)
 files = jmake.glob("src", "*.h") + jmake.glob("src", "*.c")
 lib.add(files)
 
-lib.includes.extend(jmake.fullpath("src"))
+lib.export(includes=jmake.fullpath("src"))
 
 host = jmake.Host()
 
@@ -23,7 +23,6 @@ test.depend(lib)
 
 testdebug = test.filter("debug")
 testdebug["debug"] = True
-
 
 if host.os == jmake.Platform.WIN32:
     lib.define("JOLLY_WIN32", 1)
