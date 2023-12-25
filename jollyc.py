@@ -11,8 +11,6 @@ lib.add(files)
 
 lib.export(includes=jmake.fullpath("src"))
 
-host = jmake.Host()
-
 libdebug = lib.filter("debug")
 libdebug["debug"] = True
 
@@ -24,6 +22,7 @@ test.depend(lib)
 testdebug = test.filter("debug")
 testdebug["debug"] = True
 
+host = jmake.Env()
 if host.os == jmake.Platform.WIN32:
     lib.define("JOLLY_WIN32", 1)
     lib.define("WIN32_LEAN_AND_MEAN", 1)
